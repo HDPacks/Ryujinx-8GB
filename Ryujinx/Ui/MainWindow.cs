@@ -1056,7 +1056,7 @@ namespace Ryujinx.Ui
 
             Program.Exit();        
             
-            // Allow program to flush texture memory before renderer is disposed.
+            // Allow the program to flush texture memory before the renderer is disposed.
             if (_emulationContext != null)
             {
                 UpdateGameMetadata(_emulationContext.Application.TitleIdText);
