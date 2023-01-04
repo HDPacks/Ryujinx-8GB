@@ -1052,12 +1052,11 @@ namespace Ryujinx.Ui
 
             _ending = true;
 
-            ConsoleHelper.SetConsoleWindowState(true);
-            do
-            {
-            } while (ConsoleHelper.SetConsoleWindowStateSupported == false);
-            ConsoleHelper.SetConsoleWindowState(false);
+            Dispose();                       
 
+            Program.Exit();        
+            
+            // Allow program to flush texture memory before renderer is disposed.
             if (_emulationContext != null)
             {
                 UpdateGameMetadata(_emulationContext.Application.TitleIdText);
@@ -1073,13 +1072,8 @@ namespace Ryujinx.Ui
                 }
             }                        
 
-            Dispose();                       
-
-            Program.Exit();        
-
             Application.Quit();
-
-            System.Environment.Exit(0);
+            
         }
 
         //
