@@ -1327,16 +1327,22 @@ namespace Ryujinx.Ui
         }
 
         private void StopEmulation_Pressed(object sender, EventArgs args)
-        {
+        {        
             if (_emulationContext != null)
             {
                 UpdateGameMetadata(_emulationContext.Application.TitleIdText);
+
+                if (RendererWidget != null)
+                {
+                    // We tell the widget that we are exiting and dispose of resources.                    
+                    RendererWidget.Exit();
+                    RendererWidget.Dispose();                    
+                }
             }
 
             _pauseEmulation.Sensitive = false;
             _resumeEmulation.Sensitive = false;
             UpdateMenuItem.Sensitive = true;
-            RendererWidget?.Exit();
         }
 
         private void PauseEmulation_Pressed(object sender, EventArgs args)
