@@ -1337,7 +1337,6 @@ namespace Ryujinx.Ui
             _resumeEmulation.Sensitive = false;
             UpdateMenuItem.Sensitive = true;
             RendererWidget?.Exit();
-            RendererWidget?.Dispose();
         }
 
         private void PauseEmulation_Pressed(object sender, EventArgs args)
