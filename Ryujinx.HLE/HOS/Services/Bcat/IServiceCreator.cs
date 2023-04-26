@@ -1,8 +1,8 @@
 using LibHac;
 using LibHac.Common;
 using Ryujinx.Common;
-using Ryujinx.HLE.HOS.Services.Bcat.ServiceCreator;
 using Ryujinx.HLE.HOS.Services.Arp;
+using Ryujinx.HLE.HOS.Services.Bcat.ServiceCreator;
 
 namespace Ryujinx.HLE.HOS.Services.Bcat
 {
@@ -28,7 +28,7 @@ namespace Ryujinx.HLE.HOS.Services.Bcat
             }
         }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // CreateBcatService(pid) -> object<nn::bcat::detail::ipc::IBcatService>
         public ResultCode CreateBcatService(ServiceCtx context)
         {
@@ -46,7 +46,7 @@ namespace Ryujinx.HLE.HOS.Services.Bcat
             return ResultCode.Success;
         }
 
-        [CommandHipc(1)]
+        [CommandCmif(1)]
         // CreateDeliveryCacheStorageService(pid) -> object<nn::bcat::detail::ipc::IDeliveryCacheStorageService>
         public ResultCode CreateDeliveryCacheStorageService(ServiceCtx context)
         {
@@ -54,17 +54,17 @@ namespace Ryujinx.HLE.HOS.Services.Bcat
 
             using var serv = new SharedRef<LibHac.Bcat.Impl.Ipc.IDeliveryCacheStorageService>();
 
-            Result rc = _base.Get.CreateDeliveryCacheStorageService(ref serv.Ref(), pid);
+            Result rc = _base.Get.CreateDeliveryCacheStorageService(ref serv.Ref, pid);
 
             if (rc.IsSuccess())
             {
-                MakeObject(context, new IDeliveryCacheStorageService(context, ref serv.Ref()));
+                MakeObject(context, new IDeliveryCacheStorageService(context, ref serv.Ref));
             }
 
             return (ResultCode)rc.Value;
         }
 
-        [CommandHipc(2)]
+        [CommandCmif(2)]
         // CreateDeliveryCacheStorageServiceWithApplicationId(nn::ApplicationId) -> object<nn::bcat::detail::ipc::IDeliveryCacheStorageService>
         public ResultCode CreateDeliveryCacheStorageServiceWithApplicationId(ServiceCtx context)
         {
@@ -72,11 +72,11 @@ namespace Ryujinx.HLE.HOS.Services.Bcat
 
             using var service = new SharedRef<LibHac.Bcat.Impl.Ipc.IDeliveryCacheStorageService>();
 
-            Result rc = _base.Get.CreateDeliveryCacheStorageServiceWithApplicationId(ref service.Ref(), applicationId);
+            Result rc = _base.Get.CreateDeliveryCacheStorageServiceWithApplicationId(ref service.Ref, applicationId);
 
             if (rc.IsSuccess())
             {
-                MakeObject(context, new IDeliveryCacheStorageService(context, ref service.Ref()));
+                MakeObject(context, new IDeliveryCacheStorageService(context, ref service.Ref));
             }
 
             return (ResultCode)rc.Value;

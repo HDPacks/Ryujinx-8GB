@@ -108,6 +108,12 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
         }
 
         /// <inheritdoc/>
+        public AttributeType QueryFragmentOutputType(int location)
+        {
+            return _oldSpecState.GraphicsState.FragmentOutputTypes[location];
+        }
+
+        /// <inheritdoc/>
         public int QueryComputeLocalSizeX() => _oldSpecState.ComputeState.LocalSizeX;
 
         /// <inheritdoc/>
@@ -133,6 +139,12 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
         public bool QueryHasConstantBufferDrawParameters()
         {
             return _oldSpecState.GraphicsState.HasConstantBufferDrawParameters;
+        }
+
+        /// <inheritdoc/>
+        public bool QueryDualSourceBlendEnable()
+        {
+            return _oldSpecState.GraphicsState.DualSourceBlendEnable;
         }
 
         /// <inheritdoc/>

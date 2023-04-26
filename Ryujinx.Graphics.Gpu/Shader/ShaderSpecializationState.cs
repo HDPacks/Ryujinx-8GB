@@ -1,7 +1,7 @@
 using Ryujinx.Common.Memory;
+using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu.Image;
 using Ryujinx.Graphics.Gpu.Memory;
-using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu.Shader.DiskCache;
 using Ryujinx.Graphics.Shader;
 using System;
@@ -526,6 +526,16 @@ namespace Ryujinx.Graphics.Gpu.Shader
             }
 
             if (graphicsState.HasUnalignedStorageBuffer != GraphicsState.HasUnalignedStorageBuffer)
+            {
+                return false;
+            }
+
+            if (channel.Capabilities.NeedsFragmentOutputSpecialization && !graphicsState.FragmentOutputTypes.AsSpan().SequenceEqual(GraphicsState.FragmentOutputTypes.AsSpan()))
+            {
+                return false;
+            }
+
+            if (graphicsState.DualSourceBlendEnable != GraphicsState.DualSourceBlendEnable)
             {
                 return false;
             }

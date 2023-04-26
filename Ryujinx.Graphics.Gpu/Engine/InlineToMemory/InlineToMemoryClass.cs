@@ -100,7 +100,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.InlineToMemory
             _isLinear = (argument & 1) != 0;
 
             _offset = 0;
-            _size = (int)(BitUtils.AlignUp(state.LineLengthIn, 4) * state.LineCount);
+            _size = (int)(BitUtils.AlignUp<uint>(state.LineLengthIn, 4) * state.LineCount);
 
             int count = _size / 4;
 
@@ -197,7 +197,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.InlineToMemory
 
                     if (target != null)
                     {
+                        target.SynchronizeMemory();
                         target.SetData(data, 0, 0, new GAL.Rectangle<int>(_dstX, _dstY, _lineLengthIn / target.Info.FormatInfo.BytesPerPixel, _lineCount));
+                        target.SignalModified();
 
                         return;
                     }

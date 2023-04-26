@@ -1,4 +1,4 @@
-namespace Ryujinx.Ava.Ui.Models
+namespace Ryujinx.Ava.UI.Models
 {
     public enum DeviceType
     {

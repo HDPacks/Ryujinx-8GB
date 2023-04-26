@@ -1,12 +1,12 @@
 using Avalonia.Controls;
 using FluentAvalonia.UI.Controls;
 using Ryujinx.Ava.Common.Locale;
-using Ryujinx.Ava.Ui.Models;
-using Ryujinx.Ava.Ui.ViewModels;
+using Ryujinx.Ava.UI.Models;
+using Ryujinx.Ava.UI.ViewModels;
 using Ryujinx.Common.Configuration.Hid.Controller;
 using System.Threading.Tasks;
 
-namespace Ryujinx.Ava.Ui.Windows
+namespace Ryujinx.Ava.UI.Windows
 {
     public partial class MotionSettingsWindow : UserControl
     {
@@ -45,10 +45,10 @@ namespace Ryujinx.Ava.Ui.Windows
 
             ContentDialog contentDialog = new ContentDialog
             {
-                Title = LocaleManager.Instance["ControllerMotionTitle"],
-                PrimaryButtonText = LocaleManager.Instance["ControllerSettingsSave"],
+                Title = LocaleManager.Instance[LocaleKeys.ControllerMotionTitle],
+                PrimaryButtonText = LocaleManager.Instance[LocaleKeys.ControllerSettingsSave],
                 SecondaryButtonText = "",
-                CloseButtonText = LocaleManager.Instance["ControllerSettingsClose"],
+                CloseButtonText = LocaleManager.Instance[LocaleKeys.ControllerSettingsClose],
                 Content = content
             };
             contentDialog.PrimaryButtonClick += (sender, args) =>

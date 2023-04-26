@@ -4,12 +4,11 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Common.Memory;
 using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Threading;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS.Services.Friend.ServiceCreator.FriendService;
+using Ryujinx.Horizon.Common;
 using System;
-using System.IO;
 using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
@@ -24,7 +23,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             _permissionLevel = permissionLevel;
         }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // GetCompletionEvent() -> handle<copy>
         public ResultCode GetCompletionEvent(ServiceCtx context)
         {
@@ -33,7 +32,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
                 _completionEvent = new KEvent(context.Device.System.KernelContext);
             }
 
-            if (context.Process.HandleTable.GenerateHandle(_completionEvent.ReadableEvent, out int completionEventHandle) != KernelResult.Success)
+            if (context.Process.HandleTable.GenerateHandle(_completionEvent.ReadableEvent, out int completionEventHandle) != Result.Success)
             {
                 throw new InvalidOperationException("Out of handles!");
             }
@@ -43,7 +42,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(1)]
+        [CommandCmif(1)]
         // nn::friends::Cancel()
         public ResultCode Cancel(ServiceCtx context)
         {
@@ -53,7 +52,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10100)]
+        [CommandCmif(10100)]
         // nn::friends::GetFriendListIds(int offset, nn::account::Uid userId, nn::friends::detail::ipc::SizedFriendFilter friendFilter, ulong pidPlaceHolder, pid)
         // -> int outCount, array<nn::account::NetworkServiceAccountId, 0xa>
         public ResultCode GetFriendListIds(ServiceCtx context)
@@ -92,7 +91,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10101)]
+        [CommandCmif(10101)]
         // nn::friends::GetFriendList(int offset, nn::account::Uid userId, nn::friends::detail::ipc::SizedFriendFilter friendFilter, ulong pidPlaceHolder, pid)
         // -> int outCount, array<nn::friends::detail::FriendImpl, 0x6>
         public ResultCode GetFriendList(ServiceCtx context)
@@ -130,7 +129,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10120)] // 10.0.0+
+        [CommandCmif(10120)] // 10.0.0+
         // nn::friends::IsFriendListCacheAvailable(nn::account::Uid userId) -> bool
         public ResultCode IsFriendListCacheAvailable(ServiceCtx context)
         {
@@ -151,7 +150,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10121)] // 10.0.0+
+        [CommandCmif(10121)] // 10.0.0+
         // nn::friends::EnsureFriendListAvailable(nn::account::Uid userId)
         public ResultCode EnsureFriendListAvailable(ServiceCtx context)
         {
@@ -169,7 +168,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10400)]
+        [CommandCmif(10400)]
         // nn::friends::GetBlockedUserListIds(int offset, nn::account::Uid userId) -> (u32, buffer<nn::account::NetworkServiceAccountId, 0xa>)
         public ResultCode GetBlockedUserListIds(ServiceCtx context)
         {
@@ -188,7 +187,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10600)]
+        [CommandCmif(10600)]
         // nn::friends::DeclareOpenOnlinePlaySession(nn::account::Uid userId)
         public ResultCode DeclareOpenOnlinePlaySession(ServiceCtx context)
         {
@@ -206,7 +205,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10601)]
+        [CommandCmif(10601)]
         // nn::friends::DeclareCloseOnlinePlaySession(nn::account::Uid userId)
         public ResultCode DeclareCloseOnlinePlaySession(ServiceCtx context)
         {
@@ -224,7 +223,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10610)]
+        [CommandCmif(10610)]
         // nn::friends::UpdateUserPresence(nn::account::Uid, u64, pid, buffer<nn::friends::detail::UserPresenceImpl, 0x19>)
         public ResultCode UpdateUserPresence(ServiceCtx context)
         {
@@ -248,7 +247,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10700)]
+        [CommandCmif(10700)]
         // nn::friends::GetPlayHistoryRegistrationKey(b8 unknown, nn::account::Uid) -> buffer<nn::friends::PlayHistoryRegistrationKey, 0x1a>
         public ResultCode GetPlayHistoryRegistrationKey(ServiceCtx context)
         {
@@ -310,7 +309,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(10702)]
+        [CommandCmif(10702)]
         // nn::friends::AddPlayHistory(nn::account::Uid, u64, pid, buffer<nn::friends::PlayHistoryRegistrationKey, 0x19>, buffer<nn::friends::InAppScreenName, 0x19>, buffer<nn::friends::InAppScreenName, 0x19>)
         public ResultCode AddPlayHistory(ServiceCtx context)
         {
@@ -335,7 +334,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             }
 
             // TODO: Call nn::arp::GetApplicationControlProperty here when implemented.
-            ApplicationControlProperty controlProperty = context.Device.Application.ControlData.Value;
+            ApplicationControlProperty controlProperty = context.Device.Processes.ActiveApplication.ApplicationControlProperties;
 
             /*
 

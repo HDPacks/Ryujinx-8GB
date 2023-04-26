@@ -3,7 +3,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.Collections.Generic;
 
-namespace Ryujinx.Ava.Ui.Windows
+namespace Ryujinx.Ava.UI.Windows
 {
     static class IconColorPicker
     {
@@ -125,7 +125,7 @@ namespace Ryujinx.Ava.Ui.Windows
 
         public static Bgra32[] GetBuffer(Image<Bgra32> image)
         {
-            return image.TryGetSinglePixelSpan(out var data) ? data.ToArray() : new Bgra32[0];
+            return image.TryGetSinglePixelSpan(out var data) ? data.ToArray() : Array.Empty<Bgra32>();
         }
 
         private static int GetColorScore(Dictionary<int, int> dominantColorBin, int maxHitCount, PaletteColor color)

@@ -3,7 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 
-namespace Ryujinx.Ava.Ui.Models
+namespace Ryujinx.Ava.UI.Models
 {
     public class CheatsList : ObservableCollection<CheatModel>
     {

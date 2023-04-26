@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace Ryujinx.Ava.Ui.ViewModels
+namespace Ryujinx.Ava.UI.ViewModels
 {
     public class BaseModel : INotifyPropertyChanged
     {

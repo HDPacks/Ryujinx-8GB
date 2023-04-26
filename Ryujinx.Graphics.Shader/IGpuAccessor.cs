@@ -115,6 +115,16 @@ namespace Ryujinx.Graphics.Shader
         }
 
         /// <summary>
+        /// Queries output type for fragment shaders.
+        /// </summary>
+        /// <param name="location">Location of the framgent output</param>
+        /// <returns>Output location</returns>
+        AttributeType QueryFragmentOutputType(int location)
+        {
+            return AttributeType.Float;
+        }
+
+        /// <summary>
         /// Queries Local Size X for compute shaders.
         /// </summary>
         /// <returns>Local Size X</returns>
@@ -187,6 +197,24 @@ namespace Ryujinx.Graphics.Shader
         }
 
         /// <summary>
+        /// Queries host about whether to reduce precision to improve performance.
+        /// </summary>
+        /// <returns>True if precision is limited to vertex position, false otherwise</returns>
+        bool QueryHostReducedPrecision()
+        {
+            return false;
+        }
+
+        /// <summary>
+        /// Queries dual source blend state.
+        /// </summary>
+        /// <returns>True if blending is enabled with a dual source blend equation, false otherwise</returns>
+        bool QueryDualSourceBlendEnable()
+        {
+            return false;
+        }
+
+        /// <summary>
         /// Queries host about the presence of the FrontFacing built-in variable bug.
         /// </summary>
         /// <returns>True if the bug is present on the host device used, false otherwise</returns>
@@ -238,6 +266,15 @@ namespace Ryujinx.Graphics.Shader
         bool QueryHostSupportsFragmentShaderOrderingIntel()
         {
             return false;
+        }
+
+        /// <summary>
+        /// Queries host GPU geometry shader support.
+        /// </summary>
+        /// <returns>True if the GPU and driver supports geometry shaders, false otherwise</returns>
+        bool QueryHostSupportsGeometryShader()
+        {
+            return true;
         }
 
         /// <summary>

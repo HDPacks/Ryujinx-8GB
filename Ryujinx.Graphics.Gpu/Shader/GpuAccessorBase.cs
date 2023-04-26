@@ -112,6 +112,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
             };
         }
 
+        public bool QueryHostReducedPrecision() => _context.Capabilities.ReduceShaderPrecision;
+
         public bool QueryHostHasFrontFacingBug() => _context.Capabilities.HasFrontFacingBug;
 
         public bool QueryHostHasVectorIndexingBug() => _context.Capabilities.HasVectorIndexingBug;
@@ -123,6 +125,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
         public bool QueryHostSupportsFragmentShaderInterlock() => _context.Capabilities.SupportsFragmentShaderInterlock;
 
         public bool QueryHostSupportsFragmentShaderOrderingIntel() => _context.Capabilities.SupportsFragmentShaderOrderingIntel;
+
+        public bool QueryHostSupportsGeometryShader() => _context.Capabilities.SupportsGeometryShader;
 
         public bool QueryHostSupportsGeometryShaderPassthrough() => _context.Capabilities.SupportsGeometryShaderPassthrough;
 

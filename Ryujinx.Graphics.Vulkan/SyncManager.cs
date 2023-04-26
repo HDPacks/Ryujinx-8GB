@@ -1,6 +1,7 @@
 using Ryujinx.Common.Logging;
 using Silk.NET.Vulkan;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -11,7 +12,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             public ulong ID;
             public MultiFenceHolder Waitable;
+            public ulong FlushId;
             public bool Signalled;
+
+            public bool NeedsFlush(ulong currentFlushId)
+            {
+                return (long)(FlushId - currentFlushId) >= 0;
+            }
         }
 
         private ulong _firstHandle = 0;
@@ -19,6 +26,8 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
         private List<SyncHandle> _handles;
+        private ulong FlushId;
+        private long WaitTicks;
 
         public SyncManager(VulkanRenderer gd, Device device)
         {
@@ -27,17 +36,33 @@ namespace Ryujinx.Graphics.Vulkan
             _handles = new List<SyncHandle>();
         }
 
-        public void Create(ulong id)
+        public void RegisterFlush()
         {
-            MultiFenceHolder waitable = new MultiFenceHolder();
+            FlushId++;
+        }
 
-            _gd.FlushAllCommands();
-            _gd.CommandBufferPool.AddWaitable(waitable);
+        public void Create(ulong id, bool strict)
+        {
+            ulong flushId = FlushId;
+            MultiFenceHolder waitable = new MultiFenceHolder();
+            if (strict || _gd.InterruptAction == null)
+            {
+                _gd.FlushAllCommands();
+                _gd.CommandBufferPool.AddWaitable(waitable);
+            }
+            else
+            {
+                // Don't flush commands, instead wait for the current command buffer to finish.
+                // If this sync is waited on before the command buffer is submitted, interrupt the gpu thread and flush it manually.
+
+                _gd.CommandBufferPool.AddInUseWaitable(waitable);
+            }
 
             SyncHandle handle = new SyncHandle
             {
                 ID = id,
-                Waitable = waitable
+                Waitable = waitable,
+                FlushId = flushId
             };
 
             lock (_handles)
@@ -107,13 +132,28 @@ namespace Ryujinx.Graphics.Vulkan
                         return;
                     }
 
+                    long beforeTicks = Stopwatch.GetTimestamp();
+
+                    if (result.NeedsFlush(FlushId))
+                    {
+                        _gd.InterruptAction(() =>
+                        {
+                            if (result.NeedsFlush(FlushId))
+                            {
+                                _gd.FlushAllCommands();
+                            }
+                        });
+                    }
+
                     bool signaled = result.Signalled || result.Waitable.WaitForFences(_gd.Api, _device, 1000000000);
+
                     if (!signaled)
                     {
                         Logger.Error?.PrintMsg(LogClass.Gpu, $"VK Sync Object {result.ID} failed to signal within 1000ms. Continuing...");
                     }
                     else
                     {
+                        WaitTicks += Stopwatch.GetTimestamp() - beforeTicks;
                         result.Signalled = true;
                     }
                 }
@@ -132,7 +172,7 @@ namespace Ryujinx.Graphics.Vulkan
                     first = _handles.FirstOrDefault();
                 }
 
-                if (first == null) break;
+                if (first == null || first.NeedsFlush(FlushId)) break;
 
                 bool signaled = first.Waitable.WaitForFences(_gd.Api, _device, 0);
                 if (signaled)
@@ -153,6 +193,14 @@ namespace Ryujinx.Graphics.Vulkan
                     break;
                 }
             }
+        }
+
+        public long GetAndResetWaitTicks()
+        {
+            long result = WaitTicks;
+            WaitTicks = 0;
+
+            return result;
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
+using Ryujinx.Graphics.Gpu.Engine.Threed.Blender;
 using Ryujinx.Graphics.Gpu.Engine.Types;
 using Ryujinx.Graphics.Gpu.Image;
 using Ryujinx.Graphics.Gpu.Shader;
@@ -20,11 +21,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         public const int ScissorStateIndex = 16;
         public const int VertexBufferStateIndex = 0;
         public const int PrimitiveRestartStateIndex = 12;
+        public const int RenderTargetStateIndex = 27;
 
         private readonly GpuContext _context;
         private readonly GpuChannel _channel;
         private readonly DeviceStateWithShadow<ThreedClassState> _state;
         private readonly DrawState _drawState;
+        private readonly AdvancedBlendManager _blendManager;
 
         private readonly StateUpdateTracker<ThreedClassState> _updateTracker;
 
@@ -54,13 +57,21 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="channel">GPU channel</param>
         /// <param name="state">3D engine state</param>
         /// <param name="drawState">Draw state</param>
+        /// <param name="blendManager">Advanced blend manager</param>
         /// <param name="spec">Specialization state updater</param>
-        public StateUpdater(GpuContext context, GpuChannel channel, DeviceStateWithShadow<ThreedClassState> state, DrawState drawState, SpecializationStateUpdater spec)
+        public StateUpdater(
+            GpuContext context,
+            GpuChannel channel,
+            DeviceStateWithShadow<ThreedClassState> state,
+            DrawState drawState,
+            AdvancedBlendManager blendManager,
+            SpecializationStateUpdater spec)
         {
             _context = context;
             _channel = channel;
             _state = state;
             _drawState = drawState;
+            _blendManager = blendManager;
             _currentProgramInfo = new ShaderProgramInfo[Constants.ShaderStages];
             _currentSpecState = spec;
 
@@ -83,6 +94,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 new StateUpdateCallbackEntry(UpdateVertexAttribState, nameof(ThreedClassState.VertexAttribState)),
 
                 new StateUpdateCallbackEntry(UpdateBlendState,
+                    nameof(ThreedClassState.BlendUcodeEnable),
+                    nameof(ThreedClassState.BlendUcodeSize),
                     nameof(ThreedClassState.BlendIndependent),
                     nameof(ThreedClassState.BlendConstant),
                     nameof(ThreedClassState.BlendStateCommon),
@@ -264,6 +277,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 _prevTfEnable = false;
             }
 
+            if (_updateTracker.IsDirty(RenderTargetStateIndex))
+            {
+                UpdateRenderTargetSpecialization();
+            }
+
             _updateTracker.Update(ulong.MaxValue);
 
             // If any state that the shader depends on changed,
@@ -396,19 +414,22 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         private void UpdateRenderTargetState()
         {
-            UpdateRenderTargetState(true);
+            UpdateRenderTargetState(RenderTargetUpdateFlags.UpdateAll);
         }
 
         /// <summary>
         /// Updates render targets (color and depth-stencil buffers) based on current render target state.
         /// </summary>
-        /// <param name="useControl">Use draw buffers information from render target control register</param>
-        /// <param name="layered">Indicates if the texture is layered</param>
+        /// <param name="updateFlags">Flags indicating which render targets should be updated and how</param>
         /// <param name="singleUse">If this is not -1, it indicates that only the given indexed target will be used.</param>
-        public void UpdateRenderTargetState(bool useControl, bool layered = false, int singleUse = -1)
+        public void UpdateRenderTargetState(RenderTargetUpdateFlags updateFlags, int singleUse = -1)
         {
             var memoryManager = _channel.MemoryManager;
             var rtControl = _state.State.RtControl;
+
+            bool useControl = updateFlags.HasFlag(RenderTargetUpdateFlags.UseControl);
+            bool layered = updateFlags.HasFlag(RenderTargetUpdateFlags.Layered);
+            bool singleColor = updateFlags.HasFlag(RenderTargetUpdateFlags.SingleColor);
 
             int count = useControl ? rtControl.UnpackCount() : Constants.TotalRenderTargets;
 
@@ -418,7 +439,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             int samplesInY = msaaMode.SamplesInY();
 
             var scissor = _state.State.ScreenScissorState;
-            Size sizeHint = new Size(scissor.X + scissor.Width, scissor.Y + scissor.Height, 1);
+            Size sizeHint = new Size((scissor.X + scissor.Width) * samplesInX, (scissor.Y + scissor.Height) * samplesInY, 1);
 
             int clipRegionWidth = int.MaxValue;
             int clipRegionHeight = int.MaxValue;
@@ -432,7 +453,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
                 var colorState = _state.State.RtColorState[rtIndex];
 
-                if (index >= count || !IsRtEnabled(colorState))
+                if (index >= count || !IsRtEnabled(colorState) || (singleColor && index != singleUse))
                 {
                     changedScale |= _channel.TextureManager.SetRenderTargetColor(index, null);
 
@@ -472,7 +493,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
             Image.Texture depthStencil = null;
 
-            if (dsEnable)
+            if (dsEnable && updateFlags.HasFlag(RenderTargetUpdateFlags.UpdateDepthStencil))
             {
                 var dsState = _state.State.RtDepthStencilState;
                 var dsSize = _state.State.RtDepthStencilSize;
@@ -527,11 +548,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         }
 
         /// <summary>
+        /// Updates specialization state based on render target state.
+        /// </summary>
+        public void UpdateRenderTargetSpecialization()
+        {
+            _currentSpecState.SetFragmentOutputTypes(_state.State.RtControl, ref _state.State.RtColorState);
+        }
+
+        /// <summary>
         /// Checks if a render target color buffer is used.
         /// </summary>
         /// <param name="colorState">Color buffer information</param>
         /// <returns>True if the specified buffer is enabled/used, false otherwise</returns>
-        private static bool IsRtEnabled(RtColorState colorState)
+        internal static bool IsRtEnabled(RtColorState colorState)
         {
             // Colors are disabled by writing 0 to the format.
             return colorState.Format != 0 && colorState.WidthOrStride != 0;
@@ -893,7 +922,12 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 {
                     Logger.Debug?.Print(LogClass.Gpu, $"Invalid attribute format 0x{vertexAttrib.UnpackFormat():X}.");
 
-                    format = Format.R32G32B32A32Float;
+                    format = vertexAttrib.UnpackType() switch
+                    {
+                        VertexAttribType.Sint => Format.R32G32B32A32Sint,
+                        VertexAttribType.Uint => Format.R32G32B32A32Uint,
+                        _ => Format.R32G32B32A32Float
+                    };
                 }
 
                 vertexAttribs[index] = new VertexAttribDescriptor(
@@ -989,6 +1023,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
             bool drawIndexed = _drawState.DrawIndexed;
             bool drawIndirect = _drawState.DrawIndirect;
+            int drawFirstVertex = _drawState.DrawFirstVertex;
+            int drawVertexCount = _drawState.DrawVertexCount;
             uint vbEnableMask = 0;
 
             for (int index = 0; index < Constants.TotalVertexBuffers; index++)
@@ -1050,9 +1086,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
                     int firstInstance = (int)_state.State.FirstInstance;
 
-                    var drawState = _state.State.VertexBufferDrawState;
-
-                    size = Math.Min(vbSize, (ulong)((firstInstance + drawState.First + drawState.Count) * stride));
+                    size = Math.Min(vbSize, (ulong)((firstInstance + drawFirstVertex + drawVertexCount) * stride));
                 }
 
                 _pipeline.VertexBuffers[index] = new BufferPipelineDescriptor(_channel.MemoryManager.IsMapped(address), stride, divisor);
@@ -1132,8 +1166,24 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         private void UpdateBlendState()
         {
+            if (_state.State.BlendUcodeEnable != BlendUcodeEnable.Disabled)
+            {
+                if (_context.Capabilities.SupportsBlendEquationAdvanced && _blendManager.TryGetAdvancedBlend(out var blendDescriptor))
+                {
+                    // Try to HLE it using advanced blend on the host if we can.
+                    _context.Renderer.Pipeline.SetBlendState(blendDescriptor);
+                    return;
+                }
+                else
+                {
+                    // TODO: Blend emulation fallback.
+                }
+            }
+
             bool blendIndependent = _state.State.BlendIndependent;
             ColorF blendConstant = _state.State.BlendConstant;
+
+            bool dualSourceBlendEnabled = false;
 
             if (blendIndependent)
             {
@@ -1151,6 +1201,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                         blend.AlphaOp,
                         FilterBlendFactor(blend.AlphaSrcFactor, index),
                         FilterBlendFactor(blend.AlphaDstFactor, index));
+
+                    if (enable &&
+                        (blend.ColorSrcFactor.IsDualSource() ||
+                        blend.ColorDstFactor.IsDualSource() ||
+                        blend.AlphaSrcFactor.IsDualSource() ||
+                        blend.AlphaDstFactor.IsDualSource()))
+                    {
+                        dualSourceBlendEnabled = true;
+                    }
 
                     _pipeline.BlendDescriptors[index] = descriptor;
                     _context.Renderer.Pipeline.SetBlendState(index, descriptor);
@@ -1171,12 +1230,23 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                     FilterBlendFactor(blend.AlphaSrcFactor, 0),
                     FilterBlendFactor(blend.AlphaDstFactor, 0));
 
+                if (enable &&
+                    (blend.ColorSrcFactor.IsDualSource() ||
+                    blend.ColorDstFactor.IsDualSource() ||
+                    blend.AlphaSrcFactor.IsDualSource() ||
+                    blend.AlphaDstFactor.IsDualSource()))
+                {
+                    dualSourceBlendEnabled = true;
+                }
+
                 for (int index = 0; index < Constants.TotalRenderTargets; index++)
                 {
                     _pipeline.BlendDescriptors[index] = descriptor;
                     _context.Renderer.Pipeline.SetBlendState(index, descriptor);
                 }
             }
+
+            _currentSpecState.SetDualSourceBlendEnabled(dualSourceBlendEnabled);
         }
 
         /// <summary>

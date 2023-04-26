@@ -10,19 +10,20 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private const ulong MinByteWeightForFlush = 256 * 1024 * 1024; // MiB
 
-        private readonly List<QueryPool> _activeQueries;
+        private readonly List<(QueryPool, bool)> _activeQueries;
         private CounterQueueEvent _activeConditionalRender;
 
         private readonly List<BufferedQuery> _pendingQueryCopies;
-        private readonly List<BufferedQuery> _pendingQueryResets;
 
         private ulong _byteWeight;
 
+        private List<BufferHolder> _backingSwaps;
+
         public PipelineFull(VulkanRenderer gd, Device device) : base(gd, device)
         {
-            _activeQueries = new List<QueryPool>();
+            _activeQueries = new List<(QueryPool, bool)>();
             _pendingQueryCopies = new();
-            _pendingQueryResets = new List<BufferedQuery>();
+            _backingSwaps = new();
 
             CommandBuffer = (Cbs = gd.CommandBufferPool.Rent()).CommandBuffer;
         }
@@ -32,16 +33,6 @@ namespace Ryujinx.Graphics.Vulkan
             foreach (var query in _pendingQueryCopies)
             {
                 query.PoolCopy(Cbs);
-            }
-
-            lock (_pendingQueryResets)
-            {
-                foreach (var query in _pendingQueryResets)
-                {
-                    query.PoolReset(CommandBuffer);
-                }
-
-                _pendingQueryResets.Clear();
             }
 
             _pendingQueryCopies.Clear();
@@ -79,6 +70,7 @@ namespace Ryujinx.Graphics.Vulkan
                     (int)FramebufferParams.Width,
                     (int)FramebufferParams.Height,
                     FramebufferParams.AttachmentFormats[index],
+                    FramebufferParams.GetAttachmentComponentType(index),
                     ClearScissor);
             }
             else
@@ -196,6 +188,20 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+        private void TryBackingSwaps()
+        {
+            CommandBufferScoped? cbs = null;
+
+            _backingSwaps.RemoveAll((holder) => holder.TryBackingSwap(ref cbs));
+
+            cbs?.Dispose();
+        }
+
+        public void AddBackingSwap(BufferHolder holder)
+        {
+            _backingSwaps.Add(holder);
+        }
+
         public void Restore()
         {
             if (Pipeline != null)
@@ -213,7 +219,7 @@ namespace Ryujinx.Graphics.Vulkan
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
 
-            foreach (var queryPool in _activeQueries)
+            foreach ((var queryPool, _) in _activeQueries)
             {
                 Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
             }
@@ -227,19 +233,26 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
+            Gd.RegisterFlush();
 
             // Restore per-command buffer state.
 
-            foreach (var queryPool in _activeQueries)
+            foreach ((var queryPool, var isOcclusion) in _activeQueries)
             {
+                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+
                 Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
-                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, 0);
+                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
             }
+
+            Gd.ResetCounterPool();
+
+            TryBackingSwaps();
 
             Restore();
         }
 
-        public void BeginQuery(BufferedQuery query, QueryPool pool, bool needsReset)
+        public void BeginQuery(BufferedQuery query, QueryPool pool, bool needsReset, bool isOcclusion, bool fromSamplePool)
         {
             if (needsReset)
             {
@@ -247,29 +260,31 @@ namespace Ryujinx.Graphics.Vulkan
 
                 Gd.Api.CmdResetQueryPool(CommandBuffer, pool, 0, 1);
 
-                lock (_pendingQueryResets)
+                if (fromSamplePool)
                 {
-                    _pendingQueryResets.Remove(query); // Might be present on here.
+                    // Try reset some additional queries in advance.
+
+                    Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
                 }
             }
 
-            Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, 0);
+            bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+            Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
 
-            _activeQueries.Add(pool);
+            _activeQueries.Add((pool, isOcclusion));
         }
 
         public void EndQuery(QueryPool pool)
         {
             Gd.Api.CmdEndQuery(CommandBuffer, pool, 0);
 
-            _activeQueries.Remove(pool);
-        }
-
-        public void ResetQuery(BufferedQuery query)
-        {
-            lock (_pendingQueryResets)
+            for (int i = 0; i < _activeQueries.Count; i++)
             {
-                _pendingQueryResets.Add(query);
+                if (_activeQueries[i].Item1.Handle == pool.Handle)
+                {
+                    _activeQueries.RemoveAt(i);
+                    break;
+                }
             }
         }
 
@@ -285,7 +300,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         protected override void SignalAttachmentChange()
         {
-            if (AutoFlush.ShouldFlush(DrawCount))
+            if (AutoFlush.ShouldFlushAttachmentChange(DrawCount))
             {
                 FlushCommandsImpl();
             }

@@ -6,6 +6,7 @@ using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Apm;
 using Ryujinx.HLE.HOS.Services.Hid;
+using Ryujinx.HLE.Loaders.Processes;
 using Ryujinx.HLE.Ui;
 using Ryujinx.Memory;
 using System;
@@ -19,8 +20,8 @@ namespace Ryujinx.HLE
         public MemoryBlock           Memory            { get; }
         public GpuContext            Gpu               { get; }
         public VirtualFileSystem     FileSystem        { get; }
-        public Horizon               System            { get; }
-        public ApplicationLoader     Application       { get; }
+        public HOS.Horizon           System            { get; }
+        public ProcessLoader         Processes         { get; }
         public PerformanceStatistics Statistics        { get; }
         public Hid                   Hid               { get; }
         public TamperMachine         TamperMachine     { get; }
@@ -32,20 +33,9 @@ namespace Ryujinx.HLE
 
         public Switch(HLEConfiguration configuration)
         {
-            if (configuration.GpuRenderer == null)
-            {
-                throw new ArgumentNullException(nameof(configuration.GpuRenderer));
-            }
-
-            if (configuration.AudioDeviceDriver == null)
-            {
-                throw new ArgumentNullException(nameof(configuration.AudioDeviceDriver));
-            }
-
-            if (configuration.UserChannelPersistence == null)
-            {
-                throw new ArgumentNullException(nameof(configuration.UserChannelPersistence));
-            }
+            ArgumentNullException.ThrowIfNull(configuration.GpuRenderer);
+            ArgumentNullException.ThrowIfNull(configuration.AudioDeviceDriver);
+            ArgumentNullException.ThrowIfNull(configuration.UserChannelPersistence);
 
             Configuration = configuration;
             FileSystem    = Configuration.VirtualFileSystem;
@@ -58,10 +48,10 @@ namespace Ryujinx.HLE
             AudioDeviceDriver = new CompatLayerHardwareDeviceDriver(Configuration.AudioDeviceDriver);
             Memory            = new MemoryBlock(Configuration.MemoryConfiguration.ToDramSize(), memoryAllocationFlags);
             Gpu               = new GpuContext(Configuration.GpuRenderer);
-            System            = new Horizon(this);
+            System            = new HOS.Horizon(this);
             Statistics        = new PerformanceStatistics();
             Hid               = new Hid(this, System.HidStorage);
-            Application       = new ApplicationLoader(this);
+            Processes         = new ProcessLoader(this);
             TamperMachine     = new TamperMachine();
 
             System.State.SetLanguage(Configuration.SystemLanguage);
@@ -75,29 +65,29 @@ namespace Ryujinx.HLE
             System.GlobalAccessLogMode              = Configuration.FsGlobalAccessLogMode;
         }
 
-        public void LoadCart(string exeFsDir, string romFsFile = null)
+        public bool LoadCart(string exeFsDir, string romFsFile = null)
         {
-            Application.LoadCart(exeFsDir, romFsFile);
+            return Processes.LoadUnpackedNca(exeFsDir, romFsFile);
         }
 
-        public void LoadXci(string xciFile)
+        public bool LoadXci(string xciFile)
         {
-            Application.LoadXci(xciFile);
+            return Processes.LoadXci(xciFile);
         }
 
-        public void LoadNca(string ncaFile)
+        public bool LoadNca(string ncaFile)
         {
-            Application.LoadNca(ncaFile);
+            return Processes.LoadNca(ncaFile);
         }
 
-        public void LoadNsp(string nspFile)
+        public bool LoadNsp(string nspFile)
         {
-            Application.LoadNsp(nspFile);
+            return Processes.LoadNsp(nspFile);
         }
 
-        public void LoadProgram(string fileName)
+        public bool LoadProgram(string fileName)
         {
-            Application.LoadProgram(fileName);
+            return Processes.LoadNxo(fileName);
         }
 
         public bool WaitFifo()
@@ -134,7 +124,7 @@ namespace Ryujinx.HLE
 
         public void EnableCheats()
         {
-            FileSystem.ModLoader.EnableCheats(Application.TitleId, TamperMachine);
+            FileSystem.ModLoader.EnableCheats(Processes.ActiveApplication.ProgramId, TamperMachine);
         }
 
         public bool IsAudioMuted()

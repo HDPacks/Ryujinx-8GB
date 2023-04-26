@@ -1,10 +1,9 @@
 <UserControl
-    x:Class="Ryujinx.Ava.Ui.Controls.SwkbdAppletDialog"
+    x:Class="Ryujinx.Ava.UI.Controls.SwkbdAppletDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:window="clr-namespace:Ryujinx.Ava.Ui.Windows"
     Width="400"
     mc:Ignorable="d"
     Focusable="True">
@@ -45,10 +44,11 @@
             TextWrapping="Wrap" />
         <TextBox
             Name="Input"
-            Grid.Row="2"
+            Grid.Row="3"
             Grid.Column="1"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Center"
+            Focusable="True"
             KeyUp="Message_KeyUp"
             Text="{Binding Message}"
             TextInput="Message_TextInput"

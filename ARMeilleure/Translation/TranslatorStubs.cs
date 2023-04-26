@@ -21,6 +21,7 @@ namespace ARMeilleure.Translation
         private readonly Translator _translator;
         private readonly Lazy<IntPtr> _dispatchStub;
         private readonly Lazy<DispatcherFunction> _dispatchLoop;
+        private readonly Lazy<WrapperFunction> _contextWrapper;
 
         /// <summary>
         /// Gets the dispatch stub.
@@ -30,10 +31,7 @@ namespace ARMeilleure.Translation
         {
             get
             {
-                if (_disposed)
-                {
-                    throw new ObjectDisposedException(null);
-                }
+                ObjectDisposedException.ThrowIf(_disposed, this);
 
                 return _dispatchStub.Value;
             }
@@ -47,10 +45,7 @@ namespace ARMeilleure.Translation
         {
             get
             {
-                if (_disposed)
-                {
-                    throw new ObjectDisposedException(null);
-                }
+                ObjectDisposedException.ThrowIf(_disposed, this);
 
                 return _slowDispatchStub.Value;
             }
@@ -64,12 +59,23 @@ namespace ARMeilleure.Translation
         {
             get
             {
-                if (_disposed)
-                {
-                    throw new ObjectDisposedException(null);
-                }
+                ObjectDisposedException.ThrowIf(_disposed, this);
 
                 return _dispatchLoop.Value;
+            }
+        }
+
+        /// <summary>
+        /// Gets the context wrapper function.
+        /// </summary>
+        /// <exception cref="ObjectDisposedException"><see cref="TranslatorStubs"/> instance was disposed</exception>
+        public WrapperFunction ContextWrapper
+        {
+            get
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+
+                return _contextWrapper.Value;
             }
         }
 
@@ -81,9 +87,12 @@ namespace ARMeilleure.Translation
         /// <exception cref="ArgumentNullException"><paramref name="translator"/> is null</exception>
         public TranslatorStubs(Translator translator)
         {
-            _translator = translator ?? throw new ArgumentNullException(nameof(translator));
+            ArgumentNullException.ThrowIfNull(translator);
+
+            _translator = translator;
             _dispatchStub = new(GenerateDispatchStub, isThreadSafe: true);
             _dispatchLoop = new(GenerateDispatchLoop, isThreadSafe: true);
+            _contextWrapper = new(GenerateContextWrapper, isThreadSafe: true);
         }
 
         /// <summary>
@@ -178,7 +187,7 @@ namespace ARMeilleure.Translation
             var retType = OperandType.I64;
             var argTypes = new[] { OperandType.I64 };
 
-            var func = Compiler.Compile(cfg, argTypes, retType, CompilerOptions.HighCq).Map<GuestFunction>();
+            var func = Compiler.Compile(cfg, argTypes, retType, CompilerOptions.HighCq, RuntimeInformation.ProcessArchitecture).Map<GuestFunction>();
 
             return Marshal.GetFunctionPointerForDelegate(func);
         }
@@ -204,9 +213,35 @@ namespace ARMeilleure.Translation
             var retType = OperandType.I64;
             var argTypes = new[] { OperandType.I64 };
 
-            var func = Compiler.Compile(cfg, argTypes, retType, CompilerOptions.HighCq).Map<GuestFunction>();
+            var func = Compiler.Compile(cfg, argTypes, retType, CompilerOptions.HighCq, RuntimeInformation.ProcessArchitecture).Map<GuestFunction>();
 
             return Marshal.GetFunctionPointerForDelegate(func);
+        }
+
+        /// <summary>
+        /// Emits code that syncs FP state before executing guest code, or returns it to normal.
+        /// </summary>
+        /// <param name="context">Emitter context for the method</param>
+        /// <param name="nativeContext">Pointer to the native context</param>
+        /// <param name="enter">True if entering guest code, false otherwise</param>
+        private void EmitSyncFpContext(EmitterContext context, Operand nativeContext, bool enter)
+        {
+            if (enter)
+            {
+                InstEmitSimdHelper.EnterArmFpMode(context, (flag) =>
+                {
+                    Operand flagAddress = context.Add(nativeContext, Const((ulong)NativeContext.GetRegisterOffset(new Register((int)flag, RegisterType.FpFlag))));
+                    return context.Load(OperandType.I32, flagAddress);
+                });
+            }
+            else
+            {
+                InstEmitSimdHelper.ExitArmFpMode(context, (flag, value) =>
+                {
+                    Operand flagAddress = context.Add(nativeContext, Const((ulong)NativeContext.GetRegisterOffset(new Register((int)flag, RegisterType.FpFlag))));
+                    context.Store(flagAddress, value);
+                });
+            }
         }
 
         /// <summary>
@@ -228,6 +263,8 @@ namespace ARMeilleure.Translation
             Operand runningAddress = context.Add(nativeContext, Const((ulong)NativeContext.GetRunningOffset()));
             Operand dispatchAddress = context.Add(nativeContext, Const((ulong)NativeContext.GetDispatchAddressOffset()));
 
+            EmitSyncFpContext(context, nativeContext, true);
+
             context.MarkLabel(beginLbl);
             context.Store(dispatchAddress, guestAddress);
             context.Copy(guestAddress, context.Call(Const((ulong)DispatchStub), OperandType.I64, nativeContext));
@@ -236,13 +273,40 @@ namespace ARMeilleure.Translation
             context.Branch(beginLbl);
 
             context.MarkLabel(endLbl);
+
+            EmitSyncFpContext(context, nativeContext, false);
+
             context.Return();
 
             var cfg = context.GetControlFlowGraph();
             var retType = OperandType.None;
             var argTypes = new[] { OperandType.I64, OperandType.I64 };
 
-            return Compiler.Compile(cfg, argTypes, retType, CompilerOptions.HighCq).Map<DispatcherFunction>();
+            return Compiler.Compile(cfg, argTypes, retType, CompilerOptions.HighCq, RuntimeInformation.ProcessArchitecture).Map<DispatcherFunction>();
+        }
+
+        /// <summary>
+        /// Generates a <see cref="ContextWrapper"/> function.
+        /// </summary>
+        /// <returns><see cref="ContextWrapper"/> function</returns>
+        private WrapperFunction GenerateContextWrapper()
+        {
+            var context = new EmitterContext();
+
+            Operand nativeContext = context.LoadArgument(OperandType.I64, 0);
+            Operand guestMethod = context.LoadArgument(OperandType.I64, 1);
+
+            EmitSyncFpContext(context, nativeContext, true);
+            Operand returnValue = context.Call(guestMethod, OperandType.I64, nativeContext);
+            EmitSyncFpContext(context, nativeContext, false);
+
+            context.Return(returnValue);
+
+            var cfg = context.GetControlFlowGraph();
+            var retType = OperandType.I64;
+            var argTypes = new[] { OperandType.I64, OperandType.I64 };
+
+            return Compiler.Compile(cfg, argTypes, retType, CompilerOptions.HighCq, RuntimeInformation.ProcessArchitecture).Map<WrapperFunction>();
         }
     }
 }

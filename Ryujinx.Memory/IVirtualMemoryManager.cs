@@ -1,11 +1,18 @@
 ﻿using Ryujinx.Memory.Range;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 
 namespace Ryujinx.Memory
 {
     public interface IVirtualMemoryManager
     {
+        /// <summary>
+        /// Indicates whenever the memory manager supports aliasing pages at 4KB granularity.
+        /// </summary>
+        /// <returns>True if 4KB pages are supported by the memory manager, false otherwise</returns>
+        bool Supports4KBPages { get; }
+
         /// <summary>
         /// Maps a virtual memory range into a physical memory range.
         /// </summary>
@@ -15,7 +22,20 @@ namespace Ryujinx.Memory
         /// <param name="va">Virtual memory address</param>
         /// <param name="pa">Physical memory address where the region should be mapped to</param>
         /// <param name="size">Size to be mapped</param>
-        void Map(ulong va, ulong pa, ulong size);
+        /// <param name="flags">Flags controlling memory mapping</param>
+        void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags);
+
+        /// <summary>
+        /// Maps a virtual memory range into an arbitrary host memory range.
+        /// </summary>
+        /// <remarks>
+        /// Addresses and size must be page aligned.
+        /// Not all memory managers supports this feature.
+        /// </remarks>
+        /// <param name="va">Virtual memory address</param>
+        /// <param name="hostPointer">Host pointer where the virtual region should be mapped</param>
+        /// <param name="size">Size to be mapped</param>
+        void MapForeign(ulong va, nuint hostPointer, ulong size);
 
         /// <summary>
         /// Unmaps a previously mapped range of virtual memory.
@@ -57,6 +77,21 @@ namespace Ryujinx.Memory
         /// <param name="data">Data to be written</param>
         /// <exception cref="InvalidMemoryRegionException">Throw for unhandled invalid or unmapped memory accesses</exception>
         void Write(ulong va, ReadOnlySpan<byte> data);
+
+        /// <summary>
+        /// Writes data to CPU mapped memory, with write tracking.
+        /// </summary>
+        /// <param name="va">Virtual address to write the data into</param>
+        /// <param name="data">Data to be written</param>
+        /// <exception cref="InvalidMemoryRegionException">Throw for unhandled invalid or unmapped memory accesses</exception>
+        public void Write(ulong va, ReadOnlySequence<byte> data)
+        {
+            foreach (ReadOnlyMemory<byte> segment in data)
+            {
+                Write(va, segment.Span);
+                va += (ulong)segment.Length;
+            }
+        }
 
         /// <summary>
         /// Writes data to the application process, returning false if the data was not changed.
@@ -116,6 +151,15 @@ namespace Ryujinx.Memory
         ref T GetRef<T>(ulong va) where T : unmanaged;
 
         /// <summary>
+        /// Gets the host regions that make up the given virtual address region.
+        /// If any part of the virtual region is unmapped, null is returned.
+        /// </summary>
+        /// <param name="va">Virtual address of the range</param>
+        /// <param name="size">Size of the range</param>
+        /// <returns>Array of host regions</returns>
+        IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size);
+
+        /// <summary>
         /// Gets the physical regions that make up the given virtual address region.
         /// If any part of the virtual region is unmapped, null is returned.
         /// </summary>
@@ -147,7 +191,8 @@ namespace Ryujinx.Memory
         /// <param name="size">Size of the region</param>
         /// <param name="write">True if the region was written, false if read</param>
         /// <param name="precise">True if the access is precise, false otherwise</param>
-        void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false);
+        /// <param name="exemptId">Optional ID of the handles that should not be signalled</param>
+        void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null);
 
         /// <summary>
         /// Reprotect a region of virtual memory for tracking.

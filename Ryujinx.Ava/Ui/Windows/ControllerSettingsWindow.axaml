@@ -1,13 +1,13 @@
 <UserControl
-    x:Class="Ryujinx.Ava.Ui.Windows.ControllerSettingsWindow"
+    x:Class="Ryujinx.Ava.UI.Windows.ControllerSettingsWindow"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
     xmlns:locale="clr-namespace:Ryujinx.Ava.Common.Locale"
-    xmlns:controls="clr-namespace:Ryujinx.Ava.Ui.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:viewModels="clr-namespace:Ryujinx.Ava.Ui.ViewModels"
+    xmlns:viewModels="clr-namespace:Ryujinx.Ava.UI.ViewModels"
+    xmlns:helpers="clr-namespace:Ryujinx.Ava.UI.Helpers"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
     d:DesignHeight="800"
@@ -19,7 +19,7 @@
         <viewModels:ControllerSettingsViewModel />
     </Design.DataContext>
     <UserControl.Resources>
-        <controls:KeyValueConverter x:Key="Key" />
+        <helpers:KeyValueConverter x:Key="Key" />
     </UserControl.Resources>
     <StackPanel
         HorizontalAlignment="Stretch"
@@ -639,14 +639,14 @@
                                 Width="20"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
-                                Text="{locale:Locale ControllerSettingsRightSL}"
+                                Text="{locale:Locale ControllerSettingsLeftSL}"
                                 TextAlignment="Center" />
                             <ToggleButton
                                 Width="90"
                                 Height="27"
                                 HorizontalAlignment="Stretch">
                                 <TextBlock
-                                    Text="{Binding Configuration.RightButtonSl, Mode=TwoWay, Converter={StaticResource Key}}"
+                                    Text="{Binding Configuration.LeftButtonSl, Mode=TwoWay, Converter={StaticResource Key}}"
                                     TextAlignment="Center" />
                             </ToggleButton>
                         </StackPanel>

@@ -1,11 +1,11 @@
-using Ryujinx.Ava.Ui.ViewModels;
+using Ryujinx.Ava.UI.ViewModels;
 using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Configuration.Hid.Controller;
 using Ryujinx.Common.Configuration.Hid.Controller.Motion;
 using Ryujinx.Common.Configuration.Hid.Keyboard;
 using System;
 
-namespace Ryujinx.Ava.Ui.Models
+namespace Ryujinx.Ava.UI.Models
 {
     internal class InputConfiguration<Key, Stick> : BaseModel
     {

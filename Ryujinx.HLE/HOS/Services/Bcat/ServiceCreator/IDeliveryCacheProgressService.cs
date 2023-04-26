@@ -1,9 +1,9 @@
 ﻿using Ryujinx.Common.Logging;
 using Ryujinx.Cpu;
 using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Threading;
 using Ryujinx.HLE.HOS.Services.Bcat.ServiceCreator.Types;
+using Ryujinx.Horizon.Common;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.Bcat.ServiceCreator
@@ -18,13 +18,13 @@ namespace Ryujinx.HLE.HOS.Services.Bcat.ServiceCreator
             _event = new KEvent(context.Device.System.KernelContext);
         }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // GetEvent() -> handle<copy>
         public ResultCode GetEvent(ServiceCtx context)
         {
             if (_eventHandle == 0)
             {
-                if (context.Process.HandleTable.GenerateHandle(_event.ReadableEvent, out _eventHandle) != KernelResult.Success)
+                if (context.Process.HandleTable.GenerateHandle(_event.ReadableEvent, out _eventHandle) != Result.Success)
                 {
                     throw new InvalidOperationException("Out of handles!");
                 }
@@ -37,7 +37,7 @@ namespace Ryujinx.HLE.HOS.Services.Bcat.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(1)]
+        [CommandCmif(1)]
         // GetImpl() -> buffer<nn::bcat::detail::DeliveryCacheProgressImpl, 0x1a>
         public ResultCode GetImpl(ServiceCtx context)
         {

@@ -8,6 +8,8 @@ using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrlGpu;
+using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostDbgGpu;
+using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostProfGpu;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap;
 using Ryujinx.HLE.HOS.Services.Nv.Types;
 using Ryujinx.Memory;
@@ -23,7 +25,13 @@ namespace Ryujinx.HLE.HOS.Services.Nv
     [Service("nvdrv:t")]
     class INvDrvServices : IpcService
     {
-        private static Dictionary<string, Type> _deviceFileRegistry = new Dictionary<string, Type>()
+        private static readonly List<string> _deviceFileDebugRegistry = new List<string>()
+        {
+            "/dev/nvhost-dbg-gpu",
+            "/dev/nvhost-prof-gpu"
+        };
+
+        private static readonly Dictionary<string, Type> _deviceFileRegistry = new Dictionary<string, Type>()
         {
             { "/dev/nvmap",           typeof(NvMapDeviceFile)         },
             { "/dev/nvhost-ctrl",     typeof(NvHostCtrlDeviceFile)    },
@@ -35,6 +43,8 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             //{ "/dev/nvhost-nvjpg",    typeof(NvHostChannelDeviceFile) },
             { "/dev/nvhost-vic",      typeof(NvHostChannelDeviceFile) },
             //{ "/dev/nvhost-display",  typeof(NvHostChannelDeviceFile) },
+            { "/dev/nvhost-dbg-gpu",  typeof(NvHostDbgGpuDeviceFile)  },
+            { "/dev/nvhost-prof-gpu", typeof(NvHostProfGpuDeviceFile) },
         };
 
         public static IdDictionary DeviceFileIdRegistry = new IdDictionary();
@@ -44,13 +54,23 @@ namespace Ryujinx.HLE.HOS.Services.Nv
 
         private bool _transferMemInitialized = false;
 
+        // TODO: This should call set:sys::GetDebugModeFlag
+        private bool _debugModeEnabled = false;
+
         public INvDrvServices(ServiceCtx context) : base(context.Device.System.NvDrvServer)
         {
             _owner = 0;
         }
 
-        private int Open(ServiceCtx context, string path)
+        private NvResult Open(ServiceCtx context, string path, out int fd)
         {
+            fd = -1;
+
+            if (!_debugModeEnabled && _deviceFileDebugRegistry.Contains(path))
+            {
+                return NvResult.NotSupported;
+            }
+
             if (_deviceFileRegistry.TryGetValue(path, out Type deviceFileClass))
             {
                 ConstructorInfo constructor = deviceFileClass.GetConstructor(new Type[] { typeof(ServiceCtx), typeof(IVirtualMemoryManager), typeof(ulong) });
@@ -59,14 +79,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv
 
                 deviceFile.Path = path;
 
-                return DeviceFileIdRegistry.Add(deviceFile);
-            }
-            else
-            {
-                Logger.Warning?.Print(LogClass.ServiceNv, $"Cannot find file device \"{path}\"!");
+                fd = DeviceFileIdRegistry.Add(deviceFile);
+
+                return NvResult.Success;
             }
 
-            return -1;
+            Logger.Warning?.Print(LogClass.ServiceNv, $"Cannot find file device \"{path}\"!");
+
+            return NvResult.FileOperationFailed;
         }
 
         private NvResult GetIoctlArgument(ServiceCtx context, NvIoctl ioctlCommand, out Span<byte> arguments)
@@ -215,7 +235,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             }
         }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // Open(buffer<bytes, 5> path) -> (s32 fd, u32 error_code)
         public ResultCode Open(ServiceCtx context)
         {
@@ -229,12 +249,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
 
                 string path = MemoryHelper.ReadAsciiString(context.Memory, pathPtr, (long)pathSize);
 
-                fd = Open(context, path);
-
-                if (fd == -1)
-                {
-                    errorCode = NvResult.FileOperationFailed;
-                }
+                errorCode = Open(context, path, out fd);
             }
 
             context.ResponseData.Write(fd);
@@ -243,7 +258,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(1)]
+        [CommandCmif(1)]
         // Ioctl(s32 fd, u32 ioctl_cmd, buffer<bytes, 0x21> in_args) -> (u32 error_code, buffer<bytes, 0x22> out_args)
         public ResultCode Ioctl(ServiceCtx context)
         {
@@ -284,7 +299,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(2)]
+        [CommandCmif(2)]
         // Close(s32 fd) -> u32 error_code
         public ResultCode Close(ServiceCtx context)
         {
@@ -309,7 +324,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(3)]
+        [CommandCmif(3)]
         // Initialize(u32 transfer_memory_size, handle<copy, process> current_process, handle<copy, transfer_memory> transfer_memory) -> u32 error_code
         public ResultCode Initialize(ServiceCtx context)
         {
@@ -334,7 +349,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(4)]
+        [CommandCmif(4)]
         // QueryEvent(s32 fd, u32 event_id) -> (u32, handle<copy, event>)
         public ResultCode QueryEvent(ServiceCtx context)
         {
@@ -370,7 +385,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(5)]
+        [CommandCmif(5)]
         // MapSharedMemory(s32 fd, u32 argument, handle<copy, shared_memory>) -> u32 error_code
         public ResultCode MapSharedMemory(ServiceCtx context)
         {
@@ -395,7 +410,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(6)]
+        [CommandCmif(6)]
         // GetStatus() -> (unknown<0x20>, u32 error_code)
         public ResultCode GetStatus(ServiceCtx context)
         {
@@ -424,14 +439,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(7)]
+        [CommandCmif(7)]
         // ForceSetClientPid(u64) -> u32 error_code
         public ResultCode ForceSetClientPid(ServiceCtx context)
         {
             throw new ServiceNotImplementedException(this, context);
         }
 
-        [CommandHipc(8)]
+        [CommandCmif(8)]
         // SetClientPID(u64, pid) -> u32 error_code
         public ResultCode SetClientPid(ServiceCtx context)
         {
@@ -442,7 +457,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(9)]
+        [CommandCmif(9)]
         // DumpGraphicsMemoryInfo()
         public ResultCode DumpGraphicsMemoryInfo(ServiceCtx context)
         {
@@ -451,14 +466,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(10)] // 3.0.0+
+        [CommandCmif(10)] // 3.0.0+
         // InitializeDevtools(u32, handle<copy>) -> u32 error_code;
         public ResultCode InitializeDevtools(ServiceCtx context)
         {
             throw new ServiceNotImplementedException(this, context);
         }
 
-        [CommandHipc(11)] // 3.0.0+
+        [CommandCmif(11)] // 3.0.0+
         // Ioctl2(s32 fd, u32 ioctl_cmd, buffer<bytes, 0x21> in_args, buffer<bytes, 0x21> inline_in_buffer) -> (u32 error_code, buffer<bytes, 0x22> out_args)
         public ResultCode Ioctl2(ServiceCtx context)
         {
@@ -507,7 +522,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(12)] // 3.0.0+
+        [CommandCmif(12)] // 3.0.0+
         // Ioctl3(s32 fd, u32 ioctl_cmd, buffer<bytes, 0x21> in_args) -> (u32 error_code, buffer<bytes, 0x22> out_args,  buffer<bytes, 0x22> inline_out_buffer)
         public ResultCode Ioctl3(ServiceCtx context)
         {
@@ -557,7 +572,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return ResultCode.Success;
         }
 
-        [CommandHipc(13)] // 3.0.0+
+        [CommandCmif(13)] // 3.0.0+
         // FinishInitialize(unknown<8>)
         public ResultCode FinishInitialize(ServiceCtx context)
         {

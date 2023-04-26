@@ -16,10 +16,10 @@ using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS;
 using System;
 using System.Buffers.Text;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
-
 using Path = System.IO.Path;
 using RightsId = LibHac.Fs.RightsId;
 
@@ -35,7 +35,8 @@ namespace Ryujinx.HLE.FileSystem
         public EmulatedGameCard GameCard  { get; private set; }
         public EmulatedSdCard   SdCard    { get; private set; }
         public ModLoader        ModLoader { get; private set; }
-        public Stream           RomFs     { get; private set; }
+
+        private readonly ConcurrentDictionary<ulong, Stream> _romFsByPid;
 
         private static bool _isInitialized = false;
 
@@ -55,17 +56,34 @@ namespace Ryujinx.HLE.FileSystem
         {
             ReloadKeySet();
             ModLoader = new ModLoader(); // Should only be created once
+            _romFsByPid = new ConcurrentDictionary<ulong, Stream>();
         }
 
-        public void LoadRomFs(string fileName)
+        public void LoadRomFs(ulong pid, string fileName)
         {
-            RomFs = new FileStream(fileName, FileMode.Open, FileAccess.Read);
+            var romfsStream = new FileStream(fileName, FileMode.Open, FileAccess.Read);
+
+            _romFsByPid.AddOrUpdate(pid, romfsStream, (pid, oldStream) =>
+            {
+                oldStream.Close();
+
+                return romfsStream;
+            });
         }
 
-        public void SetRomFs(Stream romfsStream)
+        public void SetRomFs(ulong pid, Stream romfsStream)
         {
-            RomFs?.Close();
-            RomFs = romfsStream;
+            _romFsByPid.AddOrUpdate(pid, romfsStream, (pid, oldStream) =>
+            {
+                oldStream.Close();
+
+                return romfsStream;
+            });
+        }
+
+        public Stream GetRomFs(ulong pid)
+        {
+            return _romFsByPid[pid];
         }
 
         public string GetFullPath(string basePath, string fileName)
@@ -122,11 +140,12 @@ namespace Ryujinx.HLE.FileSystem
                     return $"{rawPath}:/";
                 }
 
-                string basePath = rawPath.Substring(0, firstSeparatorOffset);
-                string fileName = rawPath.Substring(firstSeparatorOffset + 1);
+                var basePath = rawPath.AsSpan(0, firstSeparatorOffset);
+                var fileName = rawPath.AsSpan(firstSeparatorOffset + 1);
 
                 return $"{basePath}:/{fileName}";
             }
+
             return null;
         }
 
@@ -172,7 +191,7 @@ namespace Ryujinx.HLE.FileSystem
             fsServerClient = horizon.CreatePrivilegedHorizonClient();
             var fsServer = new FileSystemServer(fsServerClient);
 
-            RandomDataGenerator randomGenerator = buffer => Random.Shared.NextBytes(buffer);
+            RandomDataGenerator randomGenerator = Random.Shared.NextBytes;
 
             DefaultFsServerObjects fsServerObjects = DefaultFsServerObjects.GetDefaultEmulatedCreators(serverBaseFs, KeySet, fsServer, randomGenerator);
 
@@ -241,15 +260,16 @@ namespace Ryujinx.HLE.FileSystem
             {
                 using var ticketFile = new UniqueRef<IFile>();
 
-                Result result = fs.OpenFile(ref ticketFile.Ref(), ticketEntry.FullPath.ToU8Span(), OpenMode.Read);
+                Result result = fs.OpenFile(ref ticketFile.Ref, ticketEntry.FullPath.ToU8Span(), OpenMode.Read);
 
                 if (result.IsSuccess())
                 {
-                    Ticket ticket = new Ticket(ticketFile.Get.AsStream());
+                    Ticket ticket = new(ticketFile.Get.AsStream());
+                    var titleKey = ticket.GetTitleKey(KeySet);
 
-                    if (ticket.TitleKeyType == TitleKeyType.Common)
+                    if (titleKey != null)
                     {
-                        KeySet.ExternalKeySet.Add(new RightsId(ticket.RightsId), new AccessKey(ticket.GetTitleKey(KeySet)));
+                        KeySet.ExternalKeySet.Add(new RightsId(ticket.RightsId), new AccessKey(titleKey));
                     }
                 }
             }
@@ -283,7 +303,7 @@ namespace Ryujinx.HLE.FileSystem
 
             using var iterator = new UniqueRef<SaveDataIterator>();
 
-            Result rc = hos.Fs.OpenSaveDataIterator(ref iterator.Ref(), spaceId);
+            Result rc = hos.Fs.OpenSaveDataIterator(ref iterator.Ref, spaceId);
             if (rc.IsFailure()) return rc;
 
             while (true)
@@ -583,7 +603,12 @@ namespace Ryujinx.HLE.FileSystem
         {
             if (disposing)
             {
-                RomFs?.Dispose();
+                foreach (var stream in _romFsByPid.Values)
+                {
+                    stream.Close();
+                }
+
+                _romFsByPid.Clear();
             }
         }
     }

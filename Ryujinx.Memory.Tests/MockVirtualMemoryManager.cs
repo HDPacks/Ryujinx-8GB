@@ -6,6 +6,8 @@ namespace Ryujinx.Memory.Tests
 {
     public class MockVirtualMemoryManager : IVirtualMemoryManager
     {
+        public bool Supports4KBPages => true;
+
         public bool NoMappings = false;
 
         public event Action<ulong, ulong, MemoryPermission> OnProtect;
@@ -14,7 +16,12 @@ namespace Ryujinx.Memory.Tests
         {
         }
 
-        public void Map(ulong va, ulong pa, ulong size)
+        public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void MapForeign(ulong va, nuint hostAddress, ulong size)
         {
             throw new NotImplementedException();
         }
@@ -64,9 +71,14 @@ namespace Ryujinx.Memory.Tests
             throw new NotImplementedException();
         }
 
+        IEnumerable<HostMemoryRange> IVirtualMemoryManager.GetHostRegions(ulong va, ulong size)
+        {
+            throw new NotImplementedException();
+        }
+
         IEnumerable<MemoryRange> IVirtualMemoryManager.GetPhysicalRegions(ulong va, ulong size)
         {
-            return NoMappings ? new MemoryRange[0] : new MemoryRange[] { new MemoryRange(va, size) };
+            return NoMappings ? Array.Empty<MemoryRange>() : new MemoryRange[] { new MemoryRange(va, size) };
         }
 
         public bool IsMapped(ulong va)
@@ -84,7 +96,7 @@ namespace Ryujinx.Memory.Tests
             throw new NotImplementedException();
         }
 
-        public void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false)
+        public void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
         {
             throw new NotImplementedException();
         }

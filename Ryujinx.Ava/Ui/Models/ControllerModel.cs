@@ -1,6 +1,6 @@
 ﻿using Ryujinx.Common.Configuration.Hid;
 
-namespace Ryujinx.Ava.Ui.Models
+namespace Ryujinx.Ava.UI.Models
 {
     internal record ControllerModel(ControllerType Type, string Name);
 }

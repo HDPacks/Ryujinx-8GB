@@ -88,6 +88,16 @@ namespace Ryujinx.Graphics.Gpu.Shader
         public bool HasUnalignedStorageBuffer;
 
         /// <summary>
+        /// Type of the fragment shader outputs.
+        /// </summary>
+        public Array8<AttributeType> FragmentOutputTypes;
+
+        /// <summary>
+        /// Indicates whether dual source blend is enabled.
+        /// </summary>
+        public bool DualSourceBlendEnable;
+
+        /// <summary>
         /// Creates a new GPU graphics state.
         /// </summary>
         /// <param name="earlyZForce">Early Z force enable</param>
@@ -105,6 +115,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <param name="attributeTypes">Type of the vertex attributes consumed by the shader</param>
         /// <param name="hasConstantBufferDrawParameters">Indicates that the draw is writing the base vertex, base instance and draw index to Constant Buffer 0</param>
         /// <param name="hasUnalignedStorageBuffer">Indicates that any storage buffer use is unaligned</param>
+        /// <param name="fragmentOutputTypes">Type of the fragment shader outputs</param>
+        /// <param name="dualSourceBlendEnable">Type of the vertex attributes consumed by the shader</param>
         public GpuChannelGraphicsState(
             bool earlyZForce,
             PrimitiveTopology topology,
@@ -120,7 +132,9 @@ namespace Ryujinx.Graphics.Gpu.Shader
             float alphaTestReference,
             ref Array32<AttributeType> attributeTypes,
             bool hasConstantBufferDrawParameters,
-            bool hasUnalignedStorageBuffer)
+            bool hasUnalignedStorageBuffer,
+            ref Array8<AttributeType> fragmentOutputTypes,
+            bool dualSourceBlendEnable)
         {
             EarlyZForce = earlyZForce;
             Topology = topology;
@@ -137,6 +151,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
             AttributeTypes = attributeTypes;
             HasConstantBufferDrawParameters = hasConstantBufferDrawParameters;
             HasUnalignedStorageBuffer = hasUnalignedStorageBuffer;
+            FragmentOutputTypes = fragmentOutputTypes;
+            DualSourceBlendEnable = dualSourceBlendEnable;
         }
     }
 }

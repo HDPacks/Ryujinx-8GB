@@ -1,7 +1,7 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Threading;
+using Ryujinx.Horizon.Common;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.Ns.Aoc
@@ -15,7 +15,7 @@ namespace Ryujinx.HLE.HOS.Services.Ns.Aoc
             _purchasedEvent = new KEvent(system.KernelContext);
         }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // SetDefaultDeliveryTarget(pid, buffer<bytes, 5> unknown)
         public ResultCode SetDefaultDeliveryTarget(ServiceCtx context)
         {
@@ -34,11 +34,11 @@ namespace Ryujinx.HLE.HOS.Services.Ns.Aoc
             return ResultCode.Success;
         }
 
-        [CommandHipc(2)]
+        [CommandCmif(2)]
         // GetPurchasedEventReadableHandle() -> handle<copy, event>
         public ResultCode GetPurchasedEventReadableHandle(ServiceCtx context)
         {
-            if (context.Process.HandleTable.GenerateHandle(_purchasedEvent.ReadableEvent, out int purchasedEventReadableHandle) != KernelResult.Success)
+            if (context.Process.HandleTable.GenerateHandle(_purchasedEvent.ReadableEvent, out int purchasedEventReadableHandle) != Result.Success)
             {
                 throw new InvalidOperationException("Out of handles!");
             }
@@ -48,7 +48,7 @@ namespace Ryujinx.HLE.HOS.Services.Ns.Aoc
             return ResultCode.Success;
         }
 
-        [CommandHipc(3)]
+        [CommandCmif(3)]
         // PopPurchasedProductInfo(nn::ec::detail::PurchasedProductInfo)
         public ResultCode PopPurchasedProductInfo(ServiceCtx context)
         {

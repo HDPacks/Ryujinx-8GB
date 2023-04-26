@@ -1,6 +1,7 @@
-﻿using Ryujinx.Ava.Ui.ViewModels;
+﻿using Ryujinx.Ava.UI.ViewModels;
+using System.IO;
 
-namespace Ryujinx.Ava.Ui.Models
+namespace Ryujinx.Ava.UI.Models
 {
     public class DownloadableContentModel : BaseModel
     {
@@ -20,6 +21,8 @@ namespace Ryujinx.Ava.Ui.Models
         public string TitleId       { get; }
         public string ContainerPath { get; }
         public string FullPath      { get; }
+
+        public string FileName => Path.GetFileName(ContainerPath);
 
         public DownloadableContentModel(string titleId, string containerPath, string fullPath, bool enabled)
         {

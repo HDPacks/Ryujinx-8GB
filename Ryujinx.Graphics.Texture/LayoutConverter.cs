@@ -7,7 +7,7 @@ namespace Ryujinx.Graphics.Texture
 {
     public static class LayoutConverter
     {
-        private const int HostStrideAlignment = 4;
+        public const int HostStrideAlignment = 4;
 
         public static void ConvertBlockLinearToLinear(
             Span<byte> dst,
@@ -112,7 +112,7 @@ namespace Ryujinx.Graphics.Texture
             int outSize = GetTextureSize(
                 width,
                 height,
-                depth,
+                sliceDepth,
                 levels,
                 layers,
                 blockWidth,

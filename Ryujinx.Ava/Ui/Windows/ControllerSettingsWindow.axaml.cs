@@ -4,15 +4,16 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Ryujinx.Ava.Common.Locale;
-using Ryujinx.Ava.Ui.Controls;
-using Ryujinx.Ava.Ui.Models;
-using Ryujinx.Ava.Ui.ViewModels;
+using Ryujinx.Ava.UI.Controls;
+using Ryujinx.Ava.UI.Helpers;
+using Ryujinx.Ava.UI.Models;
+using Ryujinx.Ava.UI.ViewModels;
 using Ryujinx.Common.Configuration.Hid.Controller;
 using Ryujinx.Input;
 using Ryujinx.Input.Assigner;
 using System;
 
-namespace Ryujinx.Ava.Ui.Windows
+namespace Ryujinx.Ava.UI.Windows
 {
     public partial class ControllerSettingsWindow : UserControl
     {
@@ -147,11 +148,11 @@ namespace Ryujinx.Ava.Ui.Windows
                 _dialogOpen = true;
 
                 var result = await ContentDialogHelper.CreateConfirmationDialog(
-                    LocaleManager.Instance["DialogControllerSettingsModifiedConfirmMessage"],
-                    LocaleManager.Instance["DialogControllerSettingsModifiedConfirmSubMessage"],
-                    LocaleManager.Instance["InputDialogYes"],
-                    LocaleManager.Instance["InputDialogNo"],
-                    LocaleManager.Instance["RyujinxConfirm"]);
+                    LocaleManager.Instance[LocaleKeys.DialogControllerSettingsModifiedConfirmMessage],
+                    LocaleManager.Instance[LocaleKeys.DialogControllerSettingsModifiedConfirmSubMessage],
+                    LocaleManager.Instance[LocaleKeys.InputDialogYes],
+                    LocaleManager.Instance[LocaleKeys.InputDialogNo],
+                    LocaleManager.Instance[LocaleKeys.RyujinxConfirm]);
 
                 if (result == UserResult.Yes)
                 {

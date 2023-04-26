@@ -8,7 +8,7 @@ using LibHac.Ncm;
 using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using LibHac.Tools.FsSystem.NcaUtils;
-using Ryujinx.Ava.Ui.Models;
+using Ryujinx.Ava.UI.Models;
 using Ryujinx.HLE.FileSystem;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
@@ -24,7 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Color = Avalonia.Media.Color;
 
-namespace Ryujinx.Ava.Ui.ViewModels
+namespace Ryujinx.Ava.UI.ViewModels
 {
     internal class AvatarProfileViewModel : BaseModel, IDisposable
     {
@@ -246,7 +246,7 @@ namespace Ryujinx.Ava.Ui.ViewModels
                             {
                                 using var file = new UniqueRef<IFile>();
 
-                                romfs.OpenFile(ref file.Ref(), ("/" + item.FullPath).ToU8Span(), OpenMode.Read)
+                                romfs.OpenFile(ref file.Ref, ("/" + item.FullPath).ToU8Span(), OpenMode.Read)
                                     .ThrowIfFailure();
 
                                 using (MemoryStream stream = new())

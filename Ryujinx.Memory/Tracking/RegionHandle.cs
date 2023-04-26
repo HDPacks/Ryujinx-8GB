@@ -15,12 +15,12 @@ namespace Ryujinx.Memory.Tracking
         /// If more than this number of checks have been performed on a dirty flag since its last reprotect,
         /// then it is dirtied infrequently.
         /// </summary>
-        private static int CheckCountForInfrequent = 3;
+        private const int CheckCountForInfrequent = 3;
 
         /// <summary>
         /// Number of frequent dirty/consume in a row to make this handle volatile.
         /// </summary>
-        private static int VolatileThreshold = 5;
+        private const int VolatileThreshold = 5;
 
         public bool Dirty
         {
@@ -35,12 +35,17 @@ namespace Ryujinx.Memory.Tracking
         }
 
         internal int SequenceNumber { get; set; }
+        internal int Id { get; }
 
         public bool Unmapped { get; private set; }
 
         public ulong Address { get; }
         public ulong Size { get; }
         public ulong EndAddress { get; }
+
+        public ulong RealAddress { get; }
+        public ulong RealSize { get; }
+        public ulong RealEndAddress { get; }
 
         internal IMultiRegionHandle Parent { get; set; }
 
@@ -89,20 +94,38 @@ namespace Ryujinx.Memory.Tracking
         /// <param name="tracking">Tracking object for the target memory block</param>
         /// <param name="address">Virtual address of the region to track</param>
         /// <param name="size">Size of the region to track</param>
+        /// <param name="realAddress">The real, unaligned address of the handle</param>
+        /// <param name="realSize">The real, unaligned size of the handle</param>
         /// <param name="bitmap">The bitmap the dirty flag for this handle is stored in</param>
         /// <param name="bit">The bit index representing the dirty flag for this handle</param>
+        /// <param name="id">Handle ID</param>
         /// <param name="mapped">True if the region handle starts mapped</param>
-        internal RegionHandle(MemoryTracking tracking, ulong address, ulong size, ConcurrentBitmap bitmap, int bit, bool mapped = true)
+        internal RegionHandle(
+            MemoryTracking tracking,
+            ulong address,
+            ulong size,
+            ulong realAddress,
+            ulong realSize,
+            ConcurrentBitmap bitmap,
+            int bit,
+            int id,
+            bool mapped = true)
         {
             Bitmap = bitmap;
             DirtyBit = bit;
 
             Dirty = mapped;
 
+            Id = id;
+
             Unmapped = !mapped;
             Address = address;
             Size = size;
             EndAddress = address + size;
+
+            RealAddress = realAddress;
+            RealSize = realSize;
+            RealEndAddress = realAddress + realSize;
 
             _tracking = tracking;
             _regions = tracking.GetVirtualRegionsForHandle(address, size);
@@ -119,15 +142,25 @@ namespace Ryujinx.Memory.Tracking
         /// <param name="tracking">Tracking object for the target memory block</param>
         /// <param name="address">Virtual address of the region to track</param>
         /// <param name="size">Size of the region to track</param>
+        /// <param name="realAddress">The real, unaligned address of the handle</param>
+        /// <param name="realSize">The real, unaligned size of the handle</param>
+        /// <param name="id">Handle ID</param>
         /// <param name="mapped">True if the region handle starts mapped</param>
-        internal RegionHandle(MemoryTracking tracking, ulong address, ulong size, bool mapped = true)
+        internal RegionHandle(MemoryTracking tracking, ulong address, ulong size, ulong realAddress, ulong realSize, int id, bool mapped = true)
         {
             Bitmap = new ConcurrentBitmap(1, mapped);
 
+            Id = id;
+
             Unmapped = !mapped;
+
             Address = address;
             Size = size;
             EndAddress = address + size;
+
+            RealAddress = realAddress;
+            RealSize = realSize;
+            RealEndAddress = realAddress + realSize;
 
             _tracking = tracking;
             _regions = tracking.GetVirtualRegionsForHandle(address, size);
@@ -199,6 +232,10 @@ namespace Ryujinx.Memory.Tracking
 
             if (_preAction != null)
             {
+                // Limit the range to within this handle.
+                ulong maxAddress = Math.Max(address, RealAddress);
+                ulong minEndAddress = Math.Min(address + size, RealAddress + RealSize);
+
                 // Copy the handles list in case it changes when we're out of the lock.
                 if (handleIterable is List<RegionHandle>)
                 {
@@ -212,7 +249,7 @@ namespace Ryujinx.Memory.Tracking
                 {
                     lock (_preActionLock)
                     {
-                        _preAction?.Invoke(address, size);
+                        _preAction?.Invoke(maxAddress, minEndAddress - maxAddress);
 
                         // The action is removed after it returns, to ensure that the null check above succeeds when
                         // it's still in progress rather than continuing and possibly missing a required data flush.
@@ -411,10 +448,7 @@ namespace Ryujinx.Memory.Tracking
         /// </summary>
         public void Dispose()
         {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(GetType().FullName);
-            }
+            ObjectDisposedException.ThrowIf(_disposed, this);
 
             _disposed = true;
 

@@ -1,9 +1,9 @@
 using Ryujinx.Common;
 using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Threading;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS.Services.Friend.ServiceCreator.NotificationService;
+using Ryujinx.Horizon.Common;
 using System;
 using System.Collections.Generic;
 
@@ -37,13 +37,13 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             NotificationEventHandler.Instance.RegisterNotificationService(this);
         }
 
-        [CommandHipc(0)] //2.0.0+
+        [CommandCmif(0)] //2.0.0+
         // nn::friends::detail::ipc::INotificationService::GetEvent() -> handle<copy>
         public ResultCode GetEvent(ServiceCtx context)
         {
             if (_notificationEventHandle == 0)
             {
-                if (context.Process.HandleTable.GenerateHandle(_notificationEvent.ReadableEvent, out _notificationEventHandle) != KernelResult.Success)
+                if (context.Process.HandleTable.GenerateHandle(_notificationEvent.ReadableEvent, out _notificationEventHandle) != Result.Success)
                 {
                     throw new InvalidOperationException("Out of handles!");
                 }
@@ -54,7 +54,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(1)] //2.0.0+
+        [CommandCmif(1)] //2.0.0+
         // nn::friends::detail::ipc::INotificationService::Clear()
         public ResultCode Clear(ServiceCtx context)
         {
@@ -69,7 +69,7 @@ namespace Ryujinx.HLE.HOS.Services.Friend.ServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(2)] // 2.0.0+
+        [CommandCmif(2)] // 2.0.0+
         // nn::friends::detail::ipc::INotificationService::Pop() -> nn::friends::detail::ipc::SizedNotificationInfo
         public ResultCode Pop(ServiceCtx context)
         {

@@ -149,6 +149,16 @@ namespace Ryujinx.HLE
         public float AudioVolume { get; set; }
 
         /// <summary>
+        /// Use Hypervisor over JIT if available.
+        /// </summary>
+        internal readonly bool UseHypervisor;
+
+        /// <summary>
+        /// Multiplayer LAN Interface ID (device GUID)
+        /// </summary>
+        public string MultiplayerLanInterfaceId { internal get; set; }
+
+        /// <summary>
         /// An action called when HLE force a refresh of output after docked mode changed.
         /// </summary>
         public Action RefreshInputConfig { internal get; set; }
@@ -175,31 +185,35 @@ namespace Ryujinx.HLE
                                 MemoryManagerMode      memoryManagerMode,
                                 bool                   ignoreMissingServices,
                                 AspectRatio            aspectRatio,
-                                float                  audioVolume)
+                                float                  audioVolume,
+                                bool                   useHypervisor,
+                                string                 multiplayerLanInterfaceId)
         {
-            VirtualFileSystem      = virtualFileSystem;
-            LibHacHorizonManager   = libHacHorizonManager;
-            AccountManager         = accountManager;
-            ContentManager         = contentManager;
-            UserChannelPersistence = userChannelPersistence;
-            GpuRenderer            = gpuRenderer;
-            AudioDeviceDriver      = audioDeviceDriver;
-            MemoryConfiguration    = memoryConfiguration;
-            HostUiHandler          = hostUiHandler;
-            SystemLanguage         = systemLanguage;
-            Region                 = region;
-            EnableVsync            = enableVsync;
-            EnableDockedMode       = enableDockedMode;
-            EnablePtc              = enablePtc;
-            EnableInternetAccess   = enableInternetAccess;
-            FsIntegrityCheckLevel  = fsIntegrityCheckLevel;
-            FsGlobalAccessLogMode  = fsGlobalAccessLogMode;
-            SystemTimeOffset       = systemTimeOffset;
-            TimeZone               = timeZone;
-            MemoryManagerMode      = memoryManagerMode;
-            IgnoreMissingServices  = ignoreMissingServices;
-            AspectRatio            = aspectRatio;
-            AudioVolume            = audioVolume;
+            VirtualFileSystem         = virtualFileSystem;
+            LibHacHorizonManager      = libHacHorizonManager;
+            AccountManager            = accountManager;
+            ContentManager            = contentManager;
+            UserChannelPersistence    = userChannelPersistence;
+            GpuRenderer               = gpuRenderer;
+            AudioDeviceDriver         = audioDeviceDriver;
+            MemoryConfiguration       = memoryConfiguration;
+            HostUiHandler             = hostUiHandler;
+            SystemLanguage            = systemLanguage;
+            Region                    = region;
+            EnableVsync               = enableVsync;
+            EnableDockedMode          = enableDockedMode;
+            EnablePtc                 = enablePtc;
+            EnableInternetAccess      = enableInternetAccess;
+            FsIntegrityCheckLevel     = fsIntegrityCheckLevel;
+            FsGlobalAccessLogMode     = fsGlobalAccessLogMode;
+            SystemTimeOffset          = systemTimeOffset;
+            TimeZone                  = timeZone;
+            MemoryManagerMode         = memoryManagerMode;
+            IgnoreMissingServices     = ignoreMissingServices;
+            AspectRatio               = aspectRatio;
+            AudioVolume               = audioVolume;
+            UseHypervisor             = useHypervisor;
+            MultiplayerLanInterfaceId = multiplayerLanInterfaceId;
         }
     }
 }

@@ -1,7 +1,7 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Threading;
+using Ryujinx.Horizon.Common;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.SystemAppletProxy
@@ -17,7 +17,7 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Sys
             _channelEvent = new KEvent(system.KernelContext);
         }
 
-        [CommandHipc(10)]
+        [CommandCmif(10)]
         // RequestToGetForeground()
         public ResultCode RequestToGetForeground(ServiceCtx context)
         {
@@ -26,13 +26,13 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Sys
             return ResultCode.Success;
         }
 
-        [CommandHipc(21)]
+        [CommandCmif(21)]
         // GetPopFromGeneralChannelEvent() -> handle<copy>
         public ResultCode GetPopFromGeneralChannelEvent(ServiceCtx context)
         {
             if (_channelEventHandle == 0)
             {
-                if (context.Process.HandleTable.GenerateHandle(_channelEvent.ReadableEvent, out _channelEventHandle) != KernelResult.Success)
+                if (context.Process.HandleTable.GenerateHandle(_channelEvent.ReadableEvent, out _channelEventHandle) != Result.Success)
                 {
                     throw new InvalidOperationException("Out of handles!");
                 }

@@ -1,12 +1,12 @@
 ﻿using ARMeilleure.Translation;
-using ARMeilleure.Translation.PTC;
+using ARMeilleure.Translation;
 using Gtk;
 using LibHac.Common;
 using LibHac.Common.Keys;
-using LibHac.FsSystem;
 using LibHac.Ncm;
 using LibHac.Ns;
 using LibHac.Tools.FsSystem;
+using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.Audio.Backends.OpenAL;
 using Ryujinx.Audio.Backends.SDL2;
@@ -16,6 +16,7 @@ using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.SystemInterop;
+using Ryujinx.Cpu;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.GAL.Multithreading;
 using Ryujinx.Graphics.OpenGL;
@@ -41,13 +42,10 @@ using SPB.Graphics.Vulkan;
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Management;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-
 using GUI = Gtk.Builder.ObjectAttribute;
-using PtcLoadingState = ARMeilleure.Translation.PTC.PtcLoadingState;
 using ShaderCacheLoadingState = Ryujinx.Graphics.Gpu.Shader.ShaderCacheState;
 
 namespace Ryujinx.Ui
@@ -111,6 +109,7 @@ namespace Ryujinx.Ui
         [GUI] CheckMenuItem   _favToggle;
         [GUI] MenuItem        _firmwareInstallDirectory;
         [GUI] MenuItem        _firmwareInstallFile;
+        [GUI] MenuItem        _fileTypesSubMenu;
         [GUI] Label           _fifoStatus;
         [GUI] CheckMenuItem   _iconToggle;
         [GUI] CheckMenuItem   _developerToggle;
@@ -121,6 +120,12 @@ namespace Ryujinx.Ui
         [GUI] CheckMenuItem   _fileExtToggle;
         [GUI] CheckMenuItem   _pathToggle;
         [GUI] CheckMenuItem   _fileSizeToggle;
+        [GUI] CheckMenuItem   _nspShown;
+        [GUI] CheckMenuItem   _pfs0Shown;
+        [GUI] CheckMenuItem   _xciShown;
+        [GUI] CheckMenuItem   _ncaShown;
+        [GUI] CheckMenuItem   _nroShown;
+        [GUI] CheckMenuItem   _nsoShown;
         [GUI] Label           _gpuBackend;
         [GUI] Label           _dockedMode;
         [GUI] Label           _aspectRatio;
@@ -221,6 +226,22 @@ namespace Ryujinx.Ui
             _actionMenu.Sensitive = false;
             _pauseEmulation.Sensitive = false;
             _resumeEmulation.Sensitive = false;
+
+            _nspShown.Active  = ConfigurationState.Instance.Ui.ShownFileTypes.NSP.Value;
+            _pfs0Shown.Active = ConfigurationState.Instance.Ui.ShownFileTypes.PFS0.Value;
+            _xciShown.Active  = ConfigurationState.Instance.Ui.ShownFileTypes.XCI.Value;
+            _ncaShown.Active  = ConfigurationState.Instance.Ui.ShownFileTypes.NCA.Value;
+            _nroShown.Active  = ConfigurationState.Instance.Ui.ShownFileTypes.NRO.Value;
+            _nsoShown.Active  = ConfigurationState.Instance.Ui.ShownFileTypes.NSO.Value;
+
+            _nspShown.Toggled  += NSP_Shown_Toggled;
+            _pfs0Shown.Toggled += PFS0_Shown_Toggled;
+            _xciShown.Toggled  += XCI_Shown_Toggled;
+            _ncaShown.Toggled  += NCA_Shown_Toggled;
+            _nroShown.Toggled  += NRO_Shown_Toggled;
+            _nsoShown.Toggled  += NSO_Shown_Toggled;
+
+            _fileTypesSubMenu.Visible = FileAssociationHelper.IsTypeAssociationSupported;
 
             if (ConfigurationState.Instance.Ui.GuiColumns.FavColumn)        _favToggle.Active        = true;
             if (ConfigurationState.Instance.Ui.GuiColumns.IconColumn)       _iconToggle.Active       = true;
@@ -577,7 +598,9 @@ namespace Ryujinx.Ui
                                                                           ConfigurationState.Instance.System.MemoryManagerMode,
                                                                           ConfigurationState.Instance.System.IgnoreMissingServices,
                                                                           ConfigurationState.Instance.Graphics.AspectRatio,
-                                                                          ConfigurationState.Instance.System.AudioVolume);
+                                                                          ConfigurationState.Instance.System.AudioVolume,
+                                                                          ConfigurationState.Instance.System.UseHypervisor,
+                                                                          ConfigurationState.Instance.Multiplayer.LanInterfaceId.Value);
 
             _emulationContext = new HLE.Switch(configuration);
         }
@@ -589,8 +612,11 @@ namespace Ryujinx.Ui
 
         private void SetupProgressUiHandlers()
         {
-            Ptc.PtcStateChanged -= ProgressHandler;
-            Ptc.PtcStateChanged += ProgressHandler;
+            if (_emulationContext.Processes.ActiveApplication.DiskCacheLoadState != null)
+            {
+                _emulationContext.Processes.ActiveApplication.DiskCacheLoadState.StateChanged -= ProgressHandler;
+                _emulationContext.Processes.ActiveApplication.DiskCacheLoadState.StateChanged += ProgressHandler;
+            }
 
             _emulationContext.Gpu.ShaderCacheStateChanged -= ProgressHandler;
             _emulationContext.Gpu.ShaderCacheStateChanged += ProgressHandler;
@@ -603,8 +629,8 @@ namespace Ryujinx.Ui
 
             switch (state)
             {
-                case PtcLoadingState ptcState:
-                    visible = ptcState != PtcLoadingState.Loaded;
+                case LoadState ptcState:
+                    visible = ptcState != LoadState.Loaded;
                     label = $"PTC : {current}/{total}";
                     break;
                 case ShaderCacheLoadingState shaderCacheState:
@@ -686,7 +712,111 @@ namespace Ryujinx.Ui
             }
         }
 
-        public void LoadApplication(string path, bool startFullscreen = false)
+        private bool LoadApplication(string path, bool isFirmwareTitle)
+        {
+            SystemVersion firmwareVersion = _contentManager.GetCurrentFirmwareVersion();
+
+            if (!SetupValidator.CanStartApplication(_contentManager, path, out UserError userError))
+            {
+                if (SetupValidator.CanFixStartApplication(_contentManager, path, userError, out firmwareVersion))
+                {
+                    string message = $"Would you like to install the firmware embedded in this game? (Firmware {firmwareVersion.VersionString})";
+
+                    ResponseType responseDialog = (ResponseType)GtkDialog.CreateConfirmationDialog("No Firmware Installed", message).Run();
+
+                    if (responseDialog != ResponseType.Yes || !SetupValidator.TryFixStartApplication(_contentManager, path, userError, out _))
+                    {
+                        UserErrorDialog.CreateUserErrorDialog(userError);
+
+                        return false;
+                    }
+
+                    // Tell the user that we installed a firmware for them.
+
+                    firmwareVersion = _contentManager.GetCurrentFirmwareVersion();
+
+                    RefreshFirmwareLabel();
+
+                    message = $"No installed firmware was found but Ryujinx was able to install firmware {firmwareVersion.VersionString} from the provided game.\nThe emulator will now start.";
+
+                    GtkDialog.CreateInfoDialog($"Firmware {firmwareVersion.VersionString} was installed", message);
+                }
+                else
+                {
+                    UserErrorDialog.CreateUserErrorDialog(userError);
+
+                    return false;
+                }
+            }
+
+            Logger.Notice.Print(LogClass.Application, $"Using Firmware Version: {firmwareVersion?.VersionString}");
+
+            if (isFirmwareTitle)
+            {
+                Logger.Info?.Print(LogClass.Application, "Loading as Firmware Title (NCA).");
+
+                return _emulationContext.LoadNca(path);
+            }
+
+            if (Directory.Exists(path))
+            {
+                string[] romFsFiles = Directory.GetFiles(path, "*.istorage");
+
+                if (romFsFiles.Length == 0)
+                {
+                    romFsFiles = Directory.GetFiles(path, "*.romfs");
+                }
+
+                if (romFsFiles.Length > 0)
+                {
+                    Logger.Info?.Print(LogClass.Application, "Loading as cart with RomFS.");
+
+                    return _emulationContext.LoadCart(path, romFsFiles[0]);
+                }
+
+                Logger.Info?.Print(LogClass.Application, "Loading as cart WITHOUT RomFS.");
+
+                return _emulationContext.LoadCart(path);
+            }
+
+            if (File.Exists(path))
+            {
+                switch (System.IO.Path.GetExtension(path).ToLowerInvariant())
+                {
+                    case ".xci":
+                        Logger.Info?.Print(LogClass.Application, "Loading as XCI.");
+
+                        return _emulationContext.LoadXci(path);
+                    case ".nca":
+                        Logger.Info?.Print(LogClass.Application, "Loading as NCA.");
+
+                        return _emulationContext.LoadNca(path);
+                    case ".nsp":
+                    case ".pfs0":
+                        Logger.Info?.Print(LogClass.Application, "Loading as NSP.");
+
+                        return _emulationContext.LoadNsp(path);
+                    default:
+                        Logger.Info?.Print(LogClass.Application, "Loading as Homebrew.");
+                        try
+                        {
+                            return _emulationContext.LoadProgram(path);
+                        }
+                        catch (ArgumentOutOfRangeException)
+                        {
+                            Logger.Error?.Print(LogClass.Application, "The specified file is not supported by Ryujinx.");
+
+                            return false;
+                        }
+                }
+            }
+
+            Logger.Warning?.Print(LogClass.Application, "Please specify a valid XCI/NCA/NSP/PFS0/NRO file.");
+
+            return false;
+        }
+
+        public void RunApplication(string path, bool startFullscreen = false)
         {
             if (_gameLoaded)
             {
@@ -706,11 +836,6 @@ namespace Ryujinx.Ui
 
                 UpdateGraphicsConfig();
 
-                SetupProgressUiHandlers();
-
-                SystemVersion firmwareVersion = _contentManager.GetCurrentFirmwareVersion();
-
-                bool isDirectory     = Directory.Exists(path);
                 bool isFirmwareTitle = false;
 
                 if (path.StartsWith("@SystemContent"))
@@ -720,127 +845,15 @@ namespace Ryujinx.Ui
                     isFirmwareTitle = true;
                 }
 
-                if (!SetupValidator.CanStartApplication(_contentManager, path, out UserError userError))
+                if (!LoadApplication(path, isFirmwareTitle))
                 {
-                    if (SetupValidator.CanFixStartApplication(_contentManager, path, userError, out firmwareVersion))
-                    {
-                        if (userError == UserError.NoFirmware)
-                        {
-                            string message = $"Would you like to install the firmware embedded in this game? (Firmware {firmwareVersion.VersionString})";
-
-                            ResponseType responseDialog = (ResponseType)GtkDialog.CreateConfirmationDialog("No Firmware Installed", message).Run();
-
-                            if (responseDialog != ResponseType.Yes)
-                            {
-                                UserErrorDialog.CreateUserErrorDialog(userError);
-
-                                _emulationContext.Dispose();
-                                SwitchToGameTable();
-
-                                return;
-                            }
-                        }
-
-                        if (!SetupValidator.TryFixStartApplication(_contentManager, path, userError, out _))
-                        {
-                            UserErrorDialog.CreateUserErrorDialog(userError);
-
-                            _emulationContext.Dispose();
-                            SwitchToGameTable();
-
-                            return;
-                        }
-
-                        // Tell the user that we installed a firmware for them.
-                        if (userError == UserError.NoFirmware)
-                        {
-                            firmwareVersion = _contentManager.GetCurrentFirmwareVersion();
-
-                            RefreshFirmwareLabel();
-
-                            string message = $"No installed firmware was found but Ryujinx was able to install firmware {firmwareVersion.VersionString} from the provided game.\nThe emulator will now start.";
-
-                            GtkDialog.CreateInfoDialog($"Firmware {firmwareVersion.VersionString} was installed", message);
-                        }
-                    }
-                    else
-                    {
-                        UserErrorDialog.CreateUserErrorDialog(userError);
-
-                        _emulationContext.Dispose();
-                        SwitchToGameTable();
-
-                        return;
-                    }
-                }
-
-                Logger.Notice.Print(LogClass.Application, $"Using Firmware Version: {firmwareVersion?.VersionString}");
-
-                if (isFirmwareTitle)
-                {
-                    Logger.Info?.Print(LogClass.Application, "Loading as Firmware Title (NCA).");
-
-                    _emulationContext.LoadNca(path);
-                }
-                else if (Directory.Exists(path))
-                {
-                    string[] romFsFiles = Directory.GetFiles(path, "*.istorage");
-
-                    if (romFsFiles.Length == 0)
-                    {
-                        romFsFiles = Directory.GetFiles(path, "*.romfs");
-                    }
-
-                    if (romFsFiles.Length > 0)
-                    {
-                        Logger.Info?.Print(LogClass.Application, "Loading as cart with RomFS.");
-                        _emulationContext.LoadCart(path, romFsFiles[0]);
-                    }
-                    else
-                    {
-                        Logger.Info?.Print(LogClass.Application, "Loading as cart WITHOUT RomFS.");
-                        _emulationContext.LoadCart(path);
-                    }
-                }
-                else if (File.Exists(path))
-                {
-                    switch (System.IO.Path.GetExtension(path).ToLowerInvariant())
-                    {
-                        case ".xci":
-                            Logger.Info?.Print(LogClass.Application, "Loading as XCI.");
-                            _emulationContext.LoadXci(path);
-                            break;
-                        case ".nca":
-                            Logger.Info?.Print(LogClass.Application, "Loading as NCA.");
-                            _emulationContext.LoadNca(path);
-                            break;
-                        case ".nsp":
-                        case ".pfs0":
-                            Logger.Info?.Print(LogClass.Application, "Loading as NSP.");
-                            _emulationContext.LoadNsp(path);
-                            break;
-                        default:
-                            Logger.Info?.Print(LogClass.Application, "Loading as Homebrew.");
-                            try
-                            {
-                                _emulationContext.LoadProgram(path);
-                            }
-                            catch (ArgumentOutOfRangeException)
-                            {
-                                Logger.Error?.Print(LogClass.Application, "The specified file is not supported by Ryujinx.");
-                            }
-                            break;
-                    }
-                }
-                else
-                {
-                    Logger.Warning?.Print(LogClass.Application, "Please specify a valid XCI/NCA/NSP/PFS0/NRO file.");
-
                     _emulationContext.Dispose();
-                    RendererWidget.Dispose();
+                    SwitchToGameTable();
 
                     return;
                 }
+
+                SetupProgressUiHandlers();
 
                 _currentEmulatedGamePath = path;
 
@@ -848,10 +861,7 @@ namespace Ryujinx.Ui
 
                 Translator.IsReadyForTranslation.Reset();
 
-                Thread windowThread = new Thread(() =>
-                {
-                    CreateGameWindow();
-                })
+                Thread windowThread = new(CreateGameWindow)
                 {
                     Name = "GUI.WindowThread"
                 };
@@ -867,9 +877,10 @@ namespace Ryujinx.Ui
                 _firmwareInstallFile.Sensitive      = false;
                 _firmwareInstallDirectory.Sensitive = false;
 
-                DiscordIntegrationModule.SwitchToPlayingState(_emulationContext.Application.TitleIdText, _emulationContext.Application.TitleName);
+                DiscordIntegrationModule.SwitchToPlayingState(_emulationContext.Processes.ActiveApplication.ProgramIdText,
+                                                              _emulationContext.Processes.ActiveApplication.ApplicationControlProperties.Title[(int)_emulationContext.System.State.DesiredTitleLanguage].NameString.ToString());
 
-                _applicationLibrary.LoadAndSaveMetaData(_emulationContext.Application.TitleIdText, appMetadata =>
+                _applicationLibrary.LoadAndSaveMetaData(_emulationContext.Processes.ActiveApplication.ProgramIdText, appMetadata =>
                 {
                     appMetadata.LastPlayed = DateTime.UtcNow.ToString();
                 });
@@ -968,9 +979,6 @@ namespace Ryujinx.Ui
 
             RendererWidget.Start();
 
-            Ptc.Close();
-            PtcProfiler.Stop();
-
             _emulationContext.Dispose();
             _deviceExitStatus.Set();
 
@@ -1052,14 +1060,13 @@ namespace Ryujinx.Ui
 
             _ending = true;
 
-            Dispose();                       
+            Dispose();
 
-            Program.Exit();        
-            
-            // Allow the program to flush texture memory before the renderer is disposed.
+            Program.Exit();
+
             if (_emulationContext != null)
             {
-                UpdateGameMetadata(_emulationContext.Application.TitleIdText);
+                UpdateGameMetadata(_emulationContext.Processes.ActiveApplication.ProgramIdText);
 
                 if (RendererWidget != null)
                 {
@@ -1070,10 +1077,11 @@ namespace Ryujinx.Ui
                     _deviceExitStatus.WaitOne();
                     RendererWidget.Dispose();
                 }
-            }                        
+            }
 
             Application.Quit();
-            
+
+            Environment.Exit(1);
         }
 
         //
@@ -1176,7 +1184,7 @@ namespace Ryujinx.Ui
 
             string path = (string)_tableStore.GetValue(treeIter, 9);
 
-            LoadApplication(path);
+            RunApplication(path);
         }
 
         private void VSyncStatus_Clicked(object sender, ButtonReleaseEventArgs args)
@@ -1262,7 +1270,7 @@ namespace Ryujinx.Ui
 
                 if (fileChooser.Run() == (int)ResponseType.Accept)
                 {
-                    LoadApplication(fileChooser.Filename);
+                    RunApplication(fileChooser.Filename);
                 }
             }
         }
@@ -1273,7 +1281,7 @@ namespace Ryujinx.Ui
             {
                 if (fileChooser.Run() == (int)ResponseType.Accept)
                 {
-                    LoadApplication(fileChooser.Filename);
+                    RunApplication(fileChooser.Filename);
                 }
             }
         }
@@ -1289,7 +1297,7 @@ namespace Ryujinx.Ui
         {
             string contentPath = _contentManager.GetInstalledContentPath(0x0100000000001009, StorageId.BuiltInSystem, NcaContentType.Program);
 
-            LoadApplication(contentPath);
+            RunApplication(contentPath);
         }
 
         private void Open_Ryu_Folder(object sender, EventArgs args)
@@ -1299,7 +1307,7 @@ namespace Ryujinx.Ui
 
         private void OpenLogsFolder_Pressed(object sender, EventArgs args)
         {
-            string logPath = System.IO.Path.Combine(ReleaseInformations.GetBaseApplicationDirectory(), "Logs");
+            string logPath = System.IO.Path.Combine(ReleaseInformation.GetBaseApplicationDirectory(), "Logs");
 
             new DirectoryInfo(logPath).Create();
 
@@ -1327,10 +1335,10 @@ namespace Ryujinx.Ui
         }
 
         private void StopEmulation_Pressed(object sender, EventArgs args)
-        {        
+        {
             if (_emulationContext != null)
             {
-                UpdateGameMetadata(_emulationContext.Application.TitleIdText);
+                UpdateGameMetadata(_emulationContext.Processes.ActiveApplication.ProgramIdText);
             }
 
             _pauseEmulation.Sensitive = false;
@@ -1505,13 +1513,37 @@ namespace Ryujinx.Ui
             });
         }
 
+        private void InstallFileTypes_Pressed(object sender, EventArgs e)
+        {
+            if (FileAssociationHelper.Install())
+            {
+                GtkDialog.CreateInfoDialog("Install file types", "File types successfully installed!");
+            }
+            else
+            {
+                GtkDialog.CreateErrorDialog("Failed to install file types.");
+            }
+        }
+
+        private void UninstallFileTypes_Pressed(object sender, EventArgs e)
+        {
+            if (FileAssociationHelper.Uninstall())
+            {
+                GtkDialog.CreateInfoDialog("Uninstall file types", "File types successfully uninstalled!");
+            }
+            else
+            {
+                GtkDialog.CreateErrorDialog("Failed to uninstall file types.");
+            }
+        }
+
         private void HandleRelaunch()
         {
             if (_userChannelPersistence.PreviousIndex != -1 && _userChannelPersistence.ShouldRestart)
             {
                 _userChannelPersistence.ShouldRestart = false;
 
-                LoadApplication(_currentEmulatedGamePath);
+                RunApplication(_currentEmulatedGamePath);
             }
             else
             {
@@ -1574,7 +1606,9 @@ namespace Ryujinx.Ui
 
         private void ManageCheats_Pressed(object sender, EventArgs args)
         {
-           var window = new CheatWindow(_virtualFileSystem, _emulationContext.Application.TitleId, _emulationContext.Application.TitleName);
+           var window = new CheatWindow(_virtualFileSystem,
+                                        _emulationContext.Processes.ActiveApplication.ProgramId,
+                                        _emulationContext.Processes.ActiveApplication.ApplicationControlProperties.Title[(int)_emulationContext.System.State.DesiredTitleLanguage].NameString.ToString());
 
             window.Destroyed += CheatWindow_Destroyed;
             window.Show();
@@ -1617,7 +1651,7 @@ namespace Ryujinx.Ui
                     LastScannedAmiiboShowAll = _lastScannedAmiiboShowAll,
                     LastScannedAmiiboId      = _lastScannedAmiiboId,
                     DeviceId                 = deviceId,
-                    TitleId                  = _emulationContext.Application.TitleIdText.ToUpper()
+                    TitleId                  = _emulationContext.Processes.ActiveApplication.ProgramIdText.ToUpper()
                 };
 
                 amiiboWindow.DeleteEvent += AmiiboWindow_DeleteEvent;
@@ -1746,6 +1780,54 @@ namespace Ryujinx.Ui
 
             SaveConfig();
             UpdateColumns();
+        }
+
+        private void NSP_Shown_Toggled(object sender, EventArgs args)
+        {
+            ConfigurationState.Instance.Ui.ShownFileTypes.NSP.Value = _nspShown.Active;
+
+            SaveConfig();
+            UpdateGameTable();
+        }
+
+        private void PFS0_Shown_Toggled(object sender, EventArgs args)
+        {
+            ConfigurationState.Instance.Ui.ShownFileTypes.PFS0.Value = _pfs0Shown.Active;
+
+            SaveConfig();
+            UpdateGameTable();
+        }
+
+        private void XCI_Shown_Toggled (object sender, EventArgs args)
+        {
+            ConfigurationState.Instance.Ui.ShownFileTypes.XCI.Value = _xciShown.Active;
+
+            SaveConfig();
+            UpdateGameTable();
+        }
+
+        private void NCA_Shown_Toggled (object sender, EventArgs args)
+        {
+            ConfigurationState.Instance.Ui.ShownFileTypes.NCA.Value = _ncaShown.Active;
+
+            SaveConfig();
+            UpdateGameTable();
+        }
+
+        private void NRO_Shown_Toggled (object sender, EventArgs args)
+        {
+            ConfigurationState.Instance.Ui.ShownFileTypes.NRO.Value = _nroShown.Active;
+
+            SaveConfig();
+            UpdateGameTable();
+        }
+
+        private void NSO_Shown_Toggled (object sender, EventArgs args)
+        {
+            ConfigurationState.Instance.Ui.ShownFileTypes.NSO.Value = _nsoShown.Active;
+
+            SaveConfig();
+            UpdateGameTable();
         }
 
         private void RefreshList_Pressed(object sender, ButtonReleaseEventArgs args)

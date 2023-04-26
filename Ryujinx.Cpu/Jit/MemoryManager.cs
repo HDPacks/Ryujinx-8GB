@@ -28,6 +28,9 @@ namespace Ryujinx.Cpu.Jit
         private readonly MemoryBlock _backingMemory;
         private readonly InvalidAccessHandler _invalidAccessHandler;
 
+        /// <inheritdoc/>
+        public bool Supports4KBPages => true;
+
         /// <summary>
         /// Address space width in bits.
         /// </summary>
@@ -76,7 +79,7 @@ namespace Ryujinx.Cpu.Jit
         }
 
         /// <inheritdoc/>
-        public void Map(ulong va, ulong pa, ulong size)
+        public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
             AssertValidAddressAndSize(va, size);
 
@@ -91,7 +94,14 @@ namespace Ryujinx.Cpu.Jit
                 pa += PageSize;
                 remainingSize -= PageSize;
             }
+
             Tracking.Map(oVa, size);
+        }
+
+        /// <inheritdoc/>
+        public void MapForeign(ulong va, nuint hostPointer, ulong size)
+        {
+            throw new NotSupportedException();
         }
 
         /// <inheritdoc/>
@@ -379,6 +389,32 @@ namespace Ryujinx.Cpu.Jit
         }
 
         /// <inheritdoc/>
+        public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
+        {
+            if (size == 0)
+            {
+                return Enumerable.Empty<HostMemoryRange>();
+            }
+
+            var guestRegions = GetPhysicalRegionsImpl(va, size);
+            if (guestRegions == null)
+            {
+                return null;
+            }
+
+            var regions = new HostMemoryRange[guestRegions.Count];
+
+            for (int i = 0; i < regions.Length; i++)
+            {
+                var guestRegion = guestRegions[i];
+                IntPtr pointer = _backingMemory.GetPointer(guestRegion.Address, guestRegion.Size);
+                regions[i] = new HostMemoryRange((nuint)(ulong)pointer, guestRegion.Size);
+            }
+
+            return regions;
+        }
+
+        /// <inheritdoc/>
         public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
         {
             if (size == 0)
@@ -386,6 +422,11 @@ namespace Ryujinx.Cpu.Jit
                 return Enumerable.Empty<MemoryRange>();
             }
 
+            return GetPhysicalRegionsImpl(va, size);
+        }
+
+        private List<MemoryRange> GetPhysicalRegionsImpl(ulong va, ulong size)
+        {
             if (!ValidateAddress(va) || !ValidateAddressAndSize(va, size))
             {
                 return null;
@@ -588,31 +629,31 @@ namespace Ryujinx.Cpu.Jit
         }
 
         /// <inheritdoc/>
-        public CpuRegionHandle BeginTracking(ulong address, ulong size)
+        public CpuRegionHandle BeginTracking(ulong address, ulong size, int id)
         {
-            return new CpuRegionHandle(Tracking.BeginTracking(address, size));
+            return new CpuRegionHandle(Tracking.BeginTracking(address, size, id));
         }
 
         /// <inheritdoc/>
-        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, IEnumerable<IRegionHandle> handles, ulong granularity)
+        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, IEnumerable<IRegionHandle> handles, ulong granularity, int id)
         {
-            return new CpuMultiRegionHandle(Tracking.BeginGranularTracking(address, size, handles, granularity));
+            return new CpuMultiRegionHandle(Tracking.BeginGranularTracking(address, size, handles, granularity, id));
         }
 
         /// <inheritdoc/>
-        public CpuSmartMultiRegionHandle BeginSmartGranularTracking(ulong address, ulong size, ulong granularity)
+        public CpuSmartMultiRegionHandle BeginSmartGranularTracking(ulong address, ulong size, ulong granularity, int id)
         {
-            return new CpuSmartMultiRegionHandle(Tracking.BeginSmartGranularTracking(address, size, granularity));
+            return new CpuSmartMultiRegionHandle(Tracking.BeginSmartGranularTracking(address, size, granularity, id));
         }
 
         /// <inheritdoc/>
-        public void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false)
+        public void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
         {
             AssertValidAddressAndSize(va, size);
 
             if (precise)
             {
-                Tracking.VirtualMemoryEvent(va, size, write, precise: true);
+                Tracking.VirtualMemoryEvent(va, size, write, precise: true, exemptId);
                 return;
             }
 
@@ -635,7 +676,7 @@ namespace Ryujinx.Cpu.Jit
 
                 if ((pte & tag) != 0)
                 {
-                    Tracking.VirtualMemoryEvent(va, size, write);
+                    Tracking.VirtualMemoryEvent(va, size, write, precise: false, exemptId);
                     break;
                 }
 

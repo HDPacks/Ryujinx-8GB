@@ -10,7 +10,7 @@ namespace Ryujinx.Graphics.Gpu.Image
     /// A tracking handle for a texture group, which represents a range of views in a storage texture.
     /// Retains a list of overlapping texture views, a modified flag, and tracking for each
     /// CPU VA range that the views cover.
-    /// Also tracks copy dependencies for the handle - references to other handles that must be kept 
+    /// Also tracks copy dependencies for the handle - references to other handles that must be kept
     /// in sync with this one before use.
     /// </summary>
     class TextureGroupHandle : IDisposable
@@ -160,6 +160,42 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
 
         /// <summary>
+        /// Adds a single texture view as an overlap if its range overlaps.
+        /// </summary>
+        /// <param name="offset">The offset of the view in the group</param>
+        /// <param name="view">The texture to add as an overlap</param>
+        public void AddOverlap(int offset, Texture view)
+        {
+            // Overlaps can be accessed from the memory tracking signal handler, so access must be atomic.
+
+            if (OverlapsWith(offset, (int)view.Size))
+            {
+                lock (Overlaps)
+                {
+                    Overlaps.Add(view);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Removes a single texture view as an overlap if its range overlaps.
+        /// </summary>
+        /// <param name="offset">The offset of the view in the group</param>
+        /// <param name="view">The texture to add as an overlap</param>
+        public void RemoveOverlap(int offset, Texture view)
+        {
+            // Overlaps can be accessed from the memory tracking signal handler, so access must be atomic.
+
+            if (OverlapsWith(offset, (int)view.Size))
+            {
+                lock (Overlaps)
+                {
+                    Overlaps.Remove(view);
+                }
+            }
+        }
+
+        /// <summary>
         /// Registers a sync action to happen for this handle, and an interim flush action on the tracking handle.
         /// </summary>
         /// <param name="context">The GPU context to register a sync action on</param>
@@ -232,32 +268,23 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="context">The GPU context used to wait for sync</param>
         public void Sync(GpuContext context)
         {
-            bool needsSync = !context.IsGpuThread();
+            ulong registeredSync = _registeredSync;
+            long diff = (long)(context.SyncNumber - registeredSync);
 
-            if (needsSync)
+            if (diff > 0)
             {
-                ulong registeredSync = _registeredSync;
-                long diff = (long)(context.SyncNumber - registeredSync);
+                context.Renderer.WaitSync(registeredSync);
 
-                if (diff > 0)
+                if ((long)(_modifiedSync - registeredSync) > 0)
                 {
-                    context.Renderer.WaitSync(registeredSync);
-
-                    if ((long)(_modifiedSync - registeredSync) > 0)
-                    {
-                        // Flush the data in a previous state. Do not remove the modified flag - it will be removed to ignore following writes.
-                        return;
-                    }
-
-                    Modified = false;
+                    // Flush the data in a previous state. Do not remove the modified flag - it will be removed to ignore following writes.
+                    return;
                 }
-                
-                // If the difference is <= 0, no data is not ready yet. Flush any data we can without waiting or removing modified flag.
-            }
-            else
-            {
+
                 Modified = false;
             }
+
+            // If the difference is <= 0, no data is not ready yet. Flush any data we can without waiting or removing modified flag.
         }
 
         /// <summary>

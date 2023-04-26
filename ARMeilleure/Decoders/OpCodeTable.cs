@@ -108,6 +108,13 @@ namespace ARMeilleure.Decoders
             SetA64("11001010xx0xxxxxxxxxxxxxxxxxxxxx", InstName.Eor,             InstEmit.Eor,             OpCodeAluRs.Create);
             SetA64("00010011100xxxxx0xxxxxxxxxxxxxxx", InstName.Extr,            InstEmit.Extr,            OpCodeAluRs.Create);
             SetA64("10010011110xxxxxxxxxxxxxxxxxxxxx", InstName.Extr,            InstEmit.Extr,            OpCodeAluRs.Create);
+            SetA64("11010101000000110010000011011111", InstName.Hint,            InstEmit.Nop,             OpCodeSystem.Create); // Reserved Hint
+            SetA64("11010101000000110010000011111111", InstName.Hint,            InstEmit.Nop,             OpCodeSystem.Create); // Reserved Hint
+            SetA64("110101010000001100100001xxx11111", InstName.Hint,            InstEmit.Nop,             OpCodeSystem.Create); // Reserved Hint
+            SetA64("1101010100000011001000100xx11111", InstName.Hint,            InstEmit.Nop,             OpCodeSystem.Create); // Reserved Hint
+            SetA64("1101010100000011001000101>>11111", InstName.Hint,            InstEmit.Nop,             OpCodeSystem.Create); // Reserved Hint
+            SetA64("110101010000001100100011xxx11111", InstName.Hint,            InstEmit.Nop,             OpCodeSystem.Create); // Reserved Hint
+            SetA64("11010101000000110010>>xxxxx11111", InstName.Hint,            InstEmit.Nop,             OpCodeSystem.Create); // Reserved Hint
             SetA64("11010101000000110011xxxx11011111", InstName.Isb,             InstEmit.Isb,             OpCodeSystem.Create);
             SetA64("xx001000110xxxxx1xxxxxxxxxxxxxxx", InstName.Ldar,            InstEmit.Ldar,            OpCodeMemEx.Create);
             SetA64("1x001000011xxxxx1xxxxxxxxxxxxxxx", InstName.Ldaxp,           InstEmit.Ldaxp,           OpCodeMemEx.Create);
@@ -1301,7 +1308,7 @@ namespace ARMeilleure.Decoders
         {
             List<InstInfo>[] temp = new List<InstInfo>[FastLookupSize];
 
-            for (int index = 0; index < FastLookupSize; index++)
+            for (int index = 0; index < temp.Length; index++)
             {
                 temp[index] = new List<InstInfo>();
             }
@@ -1311,7 +1318,7 @@ namespace ARMeilleure.Decoders
                 int mask  = ToFastLookupIndex(inst.Mask);
                 int value = ToFastLookupIndex(inst.Value);
 
-                for (int index = 0; index < FastLookupSize; index++)
+                for (int index = 0; index < temp.Length; index++)
                 {
                     if ((index & mask) == value)
                     {
@@ -1320,7 +1327,7 @@ namespace ARMeilleure.Decoders
                 }
             }
 
-            for (int index = 0; index < FastLookupSize; index++)
+            for (int index = 0; index < temp.Length; index++)
             {
                 table[index] = temp[index].ToArray();
             }
@@ -1339,7 +1346,7 @@ namespace ARMeilleure.Decoders
 
         private static void SetT32(string encoding, InstName name, InstEmitter emitter, MakeOp makeOp)
         {
-            string reversedEncoding = encoding.Substring(16) + encoding.Substring(0, 16);
+            string reversedEncoding = $"{encoding.AsSpan(16)}{encoding.AsSpan(0, 16)}";
             MakeOp reversedMakeOp =
                 (inst, address, opCode)
                     => makeOp(inst, address, (int)BitOperations.RotateRight((uint)opCode, 16));
@@ -1353,7 +1360,7 @@ namespace ARMeilleure.Decoders
             string thumbEncoding = encoding;
             if (thumbEncoding.StartsWith("<<<<"))
             {
-                thumbEncoding = "1110" + thumbEncoding.Substring(4);
+                thumbEncoding = $"1110{thumbEncoding.AsSpan(4)}";
             }
             SetT32(thumbEncoding, name, emitter, makeOpT32);
         }
@@ -1365,19 +1372,19 @@ namespace ARMeilleure.Decoders
             string thumbEncoding = encoding;
             if (thumbEncoding.StartsWith("11110100"))
             {
-                thumbEncoding = "11111001" + encoding.Substring(8);
+                thumbEncoding = $"11111001{encoding.AsSpan(8)}";
             }
             else if (thumbEncoding.StartsWith("1111001x"))
             {
-                thumbEncoding = "111x1111" + encoding.Substring(8);
+                thumbEncoding = $"111x1111{encoding.AsSpan(8)}";
             }
             else if (thumbEncoding.StartsWith("11110010"))
             {
-                thumbEncoding = "11101111" + encoding.Substring(8);
+                thumbEncoding = $"11101111{encoding.AsSpan(8)}";
             }
             else if (thumbEncoding.StartsWith("11110011"))
             {
-                thumbEncoding = "11111111" + encoding.Substring(8);
+                thumbEncoding = $"11111111{encoding.AsSpan(8)}";
             }
             else
             {

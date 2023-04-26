@@ -1,7 +1,7 @@
 ﻿using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Services.Pcv.Clkrst.ClkrstManager;
 using Ryujinx.HLE.HOS.Services.Pcv.Types;
+using Ryujinx.Horizon.Common;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.Pcv.Clkrst
@@ -14,7 +14,7 @@ namespace Ryujinx.HLE.HOS.Services.Pcv.Clkrst
 
         public IClkrstManager(ServiceCtx context) { }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // OpenSession(u32 device_code, u32 unk) -> object<nn::clkrst::IClkrstSession>
         public ResultCode OpenSession(ServiceCtx context)
         {
@@ -28,13 +28,13 @@ namespace Ryujinx.HLE.HOS.Services.Pcv.Clkrst
             return ResultCode.Success;
         }
 
-        [CommandHipc(4)]
+        [CommandCmif(4)]
         // GetModuleStateTableEvent() -> handle<copy>
         public ResultCode GetModuleStateTableEvent(ServiceCtx context)
         {
             if (_moduleStateTableEventHandle == 0)
             {
-                if (context.Process.HandleTable.GenerateHandle(context.Device.System.IirsSharedMem, out _moduleStateTableEventHandle) != KernelResult.Success)
+                if (context.Process.HandleTable.GenerateHandle(context.Device.System.IirsSharedMem, out _moduleStateTableEventHandle) != Result.Success)
                 {
                     throw new InvalidOperationException("Out of handles!");
                 }
@@ -45,7 +45,7 @@ namespace Ryujinx.HLE.HOS.Services.Pcv.Clkrst
             return ResultCode.Success;
         }
 
-        [CommandHipc(5)]
+        [CommandCmif(5)]
         // GetModuleStateTableMaxCount() -> u32 max_count
         public ResultCode GetModuleStateTableMaxCount(ServiceCtx context)
         {

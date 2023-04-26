@@ -5,6 +5,7 @@ using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -37,20 +38,21 @@ namespace Ryujinx.Cpu.Jit
         private readonly InvalidAccessHandler _invalidAccessHandler;
         private readonly bool _unsafeMode;
 
-        private readonly MemoryBlock _addressSpace;
-        private readonly MemoryBlock _addressSpaceMirror;
+        private readonly AddressSpace _addressSpace;
         private readonly ulong _addressSpaceSize;
 
-        private readonly MemoryBlock _backingMemory;
         private readonly PageTable<ulong> _pageTable;
 
         private readonly MemoryEhMeilleure _memoryEh;
 
         private readonly ulong[] _pageBitmap;
 
+        /// <inheritdoc/>
+        public bool Supports4KBPages => MemoryBlock.GetPageSize() == PageSize;
+
         public int AddressSpaceBits { get; }
 
-        public IntPtr PageTablePointer => _addressSpace.Pointer;
+        public IntPtr PageTablePointer => _addressSpace.Base.Pointer;
 
         public MemoryManagerType Type => _unsafeMode ? MemoryManagerType.HostMappedUnsafe : MemoryManagerType.HostMapped;
 
@@ -67,7 +69,6 @@ namespace Ryujinx.Cpu.Jit
         /// <param name="invalidAccessHandler">Optional function to handle invalid memory accesses</param>
         public MemoryManagerHostMapped(MemoryBlock backingMemory, ulong addressSpaceSize, bool unsafeMode, InvalidAccessHandler invalidAccessHandler = null)
         {
-            _backingMemory = backingMemory;
             _pageTable = new PageTable<ulong>();
             _invalidAccessHandler = invalidAccessHandler;
             _unsafeMode = unsafeMode;
@@ -86,13 +87,10 @@ namespace Ryujinx.Cpu.Jit
 
             _pageBitmap = new ulong[1 << (AddressSpaceBits - (PageBits + PageToPteShift))];
 
-            MemoryAllocationFlags asFlags = MemoryAllocationFlags.Reserve | MemoryAllocationFlags.ViewCompatible;
+            _addressSpace = new AddressSpace(backingMemory, asSize, Supports4KBPages);
 
-            _addressSpace = new MemoryBlock(asSize, asFlags);
-            _addressSpaceMirror = new MemoryBlock(asSize, asFlags);
-
-            Tracking = new MemoryTracking(this, PageSize, invalidAccessHandler);
-            _memoryEh = new MemoryEhMeilleure(_addressSpace, _addressSpaceMirror, Tracking);
+            Tracking = new MemoryTracking(this, (int)MemoryBlock.GetPageSize(), invalidAccessHandler);
+            _memoryEh = new MemoryEhMeilleure(_addressSpace.Base, _addressSpace.Mirror, Tracking);
         }
 
         /// <summary>
@@ -145,16 +143,21 @@ namespace Ryujinx.Cpu.Jit
         }
 
         /// <inheritdoc/>
-        public void Map(ulong va, ulong pa, ulong size)
+        public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
             AssertValidAddressAndSize(va, size);
 
-            _addressSpace.MapView(_backingMemory, pa, va, size);
-            _addressSpaceMirror.MapView(_backingMemory, pa, va, size);
+            _addressSpace.Map(va, pa, size, flags);
             AddMapping(va, size);
             PtMap(va, pa, size);
 
             Tracking.Map(va, size);
+        }
+
+        /// <inheritdoc/>
+        public void MapForeign(ulong va, nuint hostPointer, ulong size)
+        {
+            throw new NotSupportedException();
         }
 
         /// <inheritdoc/>
@@ -167,8 +170,7 @@ namespace Ryujinx.Cpu.Jit
 
             RemoveMapping(va, size);
             PtUnmap(va, size);
-            _addressSpace.UnmapView(_backingMemory, va, size);
-            _addressSpaceMirror.UnmapView(_backingMemory, va, size);
+            _addressSpace.Unmap(va, size);
         }
 
         private void PtMap(ulong va, ulong pa, ulong size)
@@ -201,7 +203,7 @@ namespace Ryujinx.Cpu.Jit
             {
                 AssertMapped(va, (ulong)Unsafe.SizeOf<T>());
 
-                return _addressSpaceMirror.Read<T>(va);
+                return _addressSpace.Mirror.Read<T>(va);
             }
             catch (InvalidMemoryRegionException)
             {
@@ -241,7 +243,7 @@ namespace Ryujinx.Cpu.Jit
             {
                 AssertMapped(va, (ulong)data.Length);
 
-                _addressSpaceMirror.Read(va, data);
+                _addressSpace.Mirror.Read(va, data);
             }
             catch (InvalidMemoryRegionException)
             {
@@ -260,7 +262,7 @@ namespace Ryujinx.Cpu.Jit
             {
                 SignalMemoryTracking(va, (ulong)Unsafe.SizeOf<T>(), write: true);
 
-                _addressSpaceMirror.Write(va, value);
+                _addressSpace.Mirror.Write(va, value);
             }
             catch (InvalidMemoryRegionException)
             {
@@ -278,7 +280,7 @@ namespace Ryujinx.Cpu.Jit
             {
                 SignalMemoryTracking(va, (ulong)data.Length, write: true);
 
-                _addressSpaceMirror.Write(va, data);
+                _addressSpace.Mirror.Write(va, data);
             }
             catch (InvalidMemoryRegionException)
             {
@@ -296,7 +298,7 @@ namespace Ryujinx.Cpu.Jit
             {
                 AssertMapped(va, (ulong)data.Length);
 
-                _addressSpaceMirror.Write(va, data);
+                _addressSpace.Mirror.Write(va, data);
             }
             catch (InvalidMemoryRegionException)
             {
@@ -314,7 +316,7 @@ namespace Ryujinx.Cpu.Jit
             {
                 SignalMemoryTracking(va, (ulong)data.Length, false);
 
-                Span<byte> target = _addressSpaceMirror.GetSpan(va, data.Length);
+                Span<byte> target = _addressSpace.Mirror.GetSpan(va, data.Length);
                 bool changed = !data.SequenceEqual(target);
 
                 if (changed)
@@ -347,7 +349,7 @@ namespace Ryujinx.Cpu.Jit
                 AssertMapped(va, (ulong)size);
             }
 
-            return _addressSpaceMirror.GetSpan(va, size);
+            return _addressSpace.Mirror.GetSpan(va, size);
         }
 
         /// <inheritdoc/>
@@ -362,7 +364,7 @@ namespace Ryujinx.Cpu.Jit
                 AssertMapped(va, (ulong)size);
             }
 
-            return _addressSpaceMirror.GetWritableRegion(va, size);
+            return _addressSpace.Mirror.GetWritableRegion(va, size);
         }
 
         /// <inheritdoc/>
@@ -370,7 +372,7 @@ namespace Ryujinx.Cpu.Jit
         {
             SignalMemoryTracking(va, (ulong)Unsafe.SizeOf<T>(), true);
 
-            return ref _addressSpaceMirror.GetRef<T>(va);
+            return ref _addressSpace.Mirror.GetRef<T>(va);
         }
 
         /// <inheritdoc/>
@@ -455,6 +457,14 @@ namespace Ryujinx.Cpu.Jit
         }
 
         /// <inheritdoc/>
+        public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
+        {
+            AssertValidAddressAndSize(va, size);
+
+            return Enumerable.Repeat(new HostMemoryRange((nuint)(ulong)_addressSpace.Mirror.GetPointer(va, size), size), 1);
+        }
+
+        /// <inheritdoc/>
         public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
         {
             int pages = GetPagesCount(va, (uint)size, out va);
@@ -508,13 +518,13 @@ namespace Ryujinx.Cpu.Jit
         /// <remarks>
         /// This function also validates that the given range is both valid and mapped, and will throw if it is not.
         /// </remarks>
-        public void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false)
+        public void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
         {
             AssertValidAddressAndSize(va, size);
 
             if (precise)
             {
-                Tracking.VirtualMemoryEvent(va, size, write, precise: true);
+                Tracking.VirtualMemoryEvent(va, size, write, precise: true, exemptId);
                 return;
             }
 
@@ -537,7 +547,7 @@ namespace Ryujinx.Cpu.Jit
 
                 if (state >= tag)
                 {
-                    Tracking.VirtualMemoryEvent(va, size, write);
+                    Tracking.VirtualMemoryEvent(va, size, write, precise: false, exemptId);
                     return;
                 }
                 else if (state == 0)
@@ -580,7 +590,7 @@ namespace Ryujinx.Cpu.Jit
                         // Only trigger tracking from reads if both bits are set on any page.
                         if (write || (pte & (pte >> 1) & BlockMappedMask) != 0)
                         {
-                            Tracking.VirtualMemoryEvent(va, size, write);
+                            Tracking.VirtualMemoryEvent(va, size, write, precise: false, exemptId);
                             break;
                         }
                     }
@@ -692,25 +702,25 @@ namespace Ryujinx.Cpu.Jit
                 _ => MemoryPermission.None
             };
 
-            _addressSpace.Reprotect(va, size, protection, false);
+            _addressSpace.Base.Reprotect(va, size, protection, false);
         }
 
         /// <inheritdoc/>
-        public CpuRegionHandle BeginTracking(ulong address, ulong size)
+        public CpuRegionHandle BeginTracking(ulong address, ulong size, int id)
         {
-            return new CpuRegionHandle(Tracking.BeginTracking(address, size));
+            return new CpuRegionHandle(Tracking.BeginTracking(address, size, id));
         }
 
         /// <inheritdoc/>
-        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, IEnumerable<IRegionHandle> handles, ulong granularity)
+        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, IEnumerable<IRegionHandle> handles, ulong granularity, int id)
         {
-            return new CpuMultiRegionHandle(Tracking.BeginGranularTracking(address, size, handles, granularity));
+            return new CpuMultiRegionHandle(Tracking.BeginGranularTracking(address, size, handles, granularity, id));
         }
 
         /// <inheritdoc/>
-        public CpuSmartMultiRegionHandle BeginSmartGranularTracking(ulong address, ulong size, ulong granularity)
+        public CpuSmartMultiRegionHandle BeginSmartGranularTracking(ulong address, ulong size, ulong granularity, int id)
         {
-            return new CpuSmartMultiRegionHandle(Tracking.BeginSmartGranularTracking(address, size, granularity));
+            return new CpuSmartMultiRegionHandle(Tracking.BeginSmartGranularTracking(address, size, granularity, id));
         }
 
         /// <summary>
@@ -799,7 +809,6 @@ namespace Ryujinx.Cpu.Jit
         protected override void Destroy()
         {
             _addressSpace.Dispose();
-            _addressSpaceMirror.Dispose();
             _memoryEh.Dispose();
         }
 

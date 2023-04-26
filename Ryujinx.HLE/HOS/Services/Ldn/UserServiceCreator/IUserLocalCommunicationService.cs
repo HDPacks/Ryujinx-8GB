@@ -1,6 +1,6 @@
 ﻿using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Services.Ldn.Types;
+using Ryujinx.Horizon.Common;
 using System;
 using System.Net;
 
@@ -20,7 +20,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
             _networkInterface = new NetworkInterface(context.Device.System);
         }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // GetState() -> s32 state
         public ResultCode GetState(ServiceCtx context)
         {
@@ -41,13 +41,13 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
             return result;
         }
 
-        [CommandHipc(100)]
+        [CommandCmif(100)]
         // AttachStateChangeEvent() -> handle<copy>
         public ResultCode AttachStateChangeEvent(ServiceCtx context)
         {
             if (_stateChangeEventHandle == 0)
             {
-                if (context.Process.HandleTable.GenerateHandle(_networkInterface.StateChangeEvent.ReadableEvent, out _stateChangeEventHandle) != KernelResult.Success)
+                if (context.Process.HandleTable.GenerateHandle(_networkInterface.StateChangeEvent.ReadableEvent, out _stateChangeEventHandle) != Result.Success)
                 {
                     throw new InvalidOperationException("Out of handles!");
                 }
@@ -60,21 +60,21 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
             return ResultCode.Success;
         }
 
-        [CommandHipc(400)]
+        [CommandCmif(400)]
         // InitializeOld(u64, pid)
         public ResultCode InitializeOld(ServiceCtx context)
         {
             return _networkInterface.Initialize(UnknownValue, 0, null, null);
         }
 
-        [CommandHipc(401)]
+        [CommandCmif(401)]
         // Finalize()
         public ResultCode Finalize(ServiceCtx context)
         {
             return _networkInterface.Finalize();
         }
 
-        [CommandHipc(402)] // 7.0.0+
+        [CommandCmif(402)] // 7.0.0+
         // Initialize(u64 ip_addresses, u64, pid)
         public ResultCode Initialize(ServiceCtx context)
         {

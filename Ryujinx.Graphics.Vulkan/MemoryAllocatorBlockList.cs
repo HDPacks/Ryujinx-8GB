@@ -53,7 +53,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     var range = _freeRanges[i];
 
-                    ulong alignedOffset = BitUtils.AlignUp(range.Offset, (int)alignment);
+                    ulong alignedOffset = BitUtils.AlignUp<ulong>(range.Offset, alignment);
                     ulong sizeDelta = alignedOffset - range.Offset;
                     ulong usableSize = range.Size - sizeDelta;
 
@@ -162,15 +162,17 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly Device _device;
 
         public int MemoryTypeIndex { get; }
+        public bool ForBuffer { get; }
 
         private readonly int _blockAlignment;
 
-        public MemoryAllocatorBlockList(Vk api, Device device, int memoryTypeIndex, int blockAlignment)
+        public MemoryAllocatorBlockList(Vk api, Device device, int memoryTypeIndex, int blockAlignment, bool forBuffer)
         {
             _blocks = new List<Block>();
             _api = api;
             _device = device;
             MemoryTypeIndex = memoryTypeIndex;
+            ForBuffer = forBuffer;
             _blockAlignment = blockAlignment;
         }
 
@@ -196,7 +198,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            ulong blockAlignedSize = BitUtils.AlignUp(size, _blockAlignment);
+            ulong blockAlignedSize = BitUtils.AlignUp<ulong>(size, (ulong)_blockAlignment);
 
             var memoryAllocateInfo = new MemoryAllocateInfo()
             {

@@ -6,12 +6,13 @@ using Avalonia.Media;
 using FluentAvalonia.Core;
 using FluentAvalonia.UI.Controls;
 using Ryujinx.Ava.Common.Locale;
-using Ryujinx.Ava.Ui.Windows;
+using Ryujinx.Ava.UI.Helpers;
+using Ryujinx.Ava.UI.Windows;
 using Ryujinx.HLE.HOS.Applets;
 using System;
 using System.Threading.Tasks;
 
-namespace Ryujinx.Ava.Ui.Controls
+namespace Ryujinx.Ava.UI.Controls
 {
     internal partial class SwkbdAppletDialog : UserControl
     {
@@ -22,10 +23,11 @@ namespace Ryujinx.Ava.Ui.Controls
 
         private ContentDialog _host;
 
-        public SwkbdAppletDialog(string mainText, string secondaryText, string placeholder)
+        public SwkbdAppletDialog(string mainText, string secondaryText, string placeholder, string message)
         {
             MainText = mainText;
             SecondaryText = secondaryText;
+            Message = message ?? "";
             DataContext = this;
             _placeholder = placeholder;
             InitializeComponent();
@@ -43,6 +45,13 @@ namespace Ryujinx.Ava.Ui.Controls
             InitializeComponent();
         }
 
+        protected override void OnGotFocus(GotFocusEventArgs e)
+        {
+            // FIXME: This does not work. Might be a bug in Avalonia with DialogHost
+            //        Currently focus will be redirected to the overlay window instead.
+            Input.Focus();
+        }
+
         public string Message { get; set; } = "";
         public string MainText { get; set; } = "";
         public string SecondaryText { get; set; } = "";
@@ -53,30 +62,9 @@ namespace Ryujinx.Ava.Ui.Controls
 
             UserResult result = UserResult.Cancel;
 
-            SwkbdAppletDialog content = new SwkbdAppletDialog(args.HeaderText, args.SubtitleText, args.GuideText)
-            {
-                Message = args.InitialText ?? ""
-            };
+            SwkbdAppletDialog content = new SwkbdAppletDialog(args.HeaderText, args.SubtitleText, args.GuideText, args.InitialText);
 
             string input = string.Empty;
-
-            var overlay = new ContentDialogOverlayWindow()
-            {
-                Height = window.Bounds.Height,
-                Width = window.Bounds.Width,
-                Position = window.PointToScreen(new Point())
-            };
-
-            window.PositionChanged += OverlayOnPositionChanged;
-
-            void OverlayOnPositionChanged(object sender, PixelPointEventArgs e)
-            {
-                overlay.Position = window.PointToScreen(new Point());
-            }
-
-            contentDialog = overlay.ContentDialog;
-
-            bool opened = false;
 
             content.SetInputLengthValidation(args.StringLengthMin, args.StringLengthMax);
 
@@ -85,7 +73,7 @@ namespace Ryujinx.Ava.Ui.Controls
             contentDialog.PrimaryButtonText = args.SubmitText;
             contentDialog.IsPrimaryButtonEnabled = content._checkLength(content.Message.Length);
             contentDialog.SecondaryButtonText = "";
-            contentDialog.CloseButtonText = LocaleManager.Instance["InputDialogCancel"];
+            contentDialog.CloseButtonText = LocaleManager.Instance[LocaleKeys.InputDialogCancel];
             contentDialog.Content = content;
 
             TypedEventHandler<ContentDialog, ContentDialogClosedEventArgs> handler = (sender, eventArgs) =>
@@ -98,25 +86,7 @@ namespace Ryujinx.Ava.Ui.Controls
             };
             contentDialog.Closed += handler;
 
-            overlay.Opened += OverlayOnActivated;
-
-            async void OverlayOnActivated(object sender, EventArgs e)
-            {
-                if (opened)
-                {
-                    return;
-                }
-
-                opened = true;
-
-                overlay.Position = window.PointToScreen(new Point());
-
-                await contentDialog.ShowAsync(overlay);
-                contentDialog.Closed -= handler;
-                overlay.Close();
-            };
-
-            await overlay.ShowDialog(window);
+            await ContentDialogHelper.ShowAsync(contentDialog);
 
             return (result, input);
         }
@@ -138,14 +108,16 @@ namespace Ryujinx.Ava.Ui.Controls
             else if (_inputMin > 0 && _inputMax == int.MaxValue)
             {
                 Error.IsVisible = true;
-                Error.Text = string.Format(LocaleManager.Instance["SwkbdMinCharacters"], _inputMin);
+
+                Error.Text = LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.SwkbdMinCharacters, _inputMin);
 
                 _checkLength = length => _inputMin <= length;
             }
             else
             {
                 Error.IsVisible = true;
-                Error.Text = string.Format(LocaleManager.Instance["SwkbdMinRangeCharacters"], _inputMin, _inputMax);
+
+                Error.Text = LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.SwkbdMinRangeCharacters, _inputMin, _inputMax);
 
                 _checkLength = length => _inputMin <= length && length <= _inputMax;
             }

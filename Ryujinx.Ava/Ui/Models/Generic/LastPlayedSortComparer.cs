@@ -3,7 +3,7 @@ using Ryujinx.Ui.App.Common;
 using System;
 using System.Collections.Generic;
 
-namespace Ryujinx.Ava.Ui.Models.Generic
+namespace Ryujinx.Ava.UI.Models.Generic
 {
     internal class LastPlayedSortComparer : IComparer<ApplicationData>
     {
@@ -17,12 +17,12 @@ namespace Ryujinx.Ava.Ui.Models.Generic
             string aValue = x.LastPlayed;
             string bValue = y.LastPlayed;
 
-            if (aValue == LocaleManager.Instance["Never"])
+            if (aValue == LocaleManager.Instance[LocaleKeys.Never])
             {
                 aValue = DateTime.UnixEpoch.ToString();
             }
 
-            if (bValue == LocaleManager.Instance["Never"])
+            if (bValue == LocaleManager.Instance[LocaleKeys.Never])
             {
                 bValue = DateTime.UnixEpoch.ToString();
             }

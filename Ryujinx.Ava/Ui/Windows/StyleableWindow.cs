@@ -6,7 +6,7 @@ using System;
 using System.IO;
 using System.Reflection;
 
-namespace Ryujinx.Ava.Ui.Windows
+namespace Ryujinx.Ava.UI.Windows
 {
     public class StyleableWindow : Window
     {

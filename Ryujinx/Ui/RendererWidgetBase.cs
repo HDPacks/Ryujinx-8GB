@@ -1,17 +1,16 @@
 ﻿using ARMeilleure.Translation;
-using ARMeilleure.Translation.PTC;
 using Gdk;
 using Gtk;
 using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
-using Ryujinx.Ui.Common.Configuration;
-using Ryujinx.Graphics.Gpu;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.GAL.Multithreading;
+using Ryujinx.Graphics.Gpu;
 using Ryujinx.Input;
 using Ryujinx.Input.GTK3;
 using Ryujinx.Input.HLE;
+using Ryujinx.Ui.Common.Configuration;
 using Ryujinx.Ui.Widgets;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
@@ -27,6 +26,7 @@ namespace Ryujinx.Ui
 {
     using Image = SixLabors.ImageSharp.Image;
     using Key = Input.Key;
+    using ScalingFilter = Graphics.GAL.ScalingFilter;
     using Switch = HLE.Switch;
 
     public abstract class RendererWidgetBase : DrawingArea
@@ -69,7 +69,7 @@ namespace Ryujinx.Ui
         private readonly CancellationTokenSource _gpuCancellationTokenSource;
 
         // Hide Cursor
-        const int CursorHideIdleTime = 8; // seconds
+        const int CursorHideIdleTime = 5; // seconds
         private static readonly Cursor _invisibleCursor = new Cursor(Display.Default, CursorType.BlankCursor);
         private long _lastCursorMoveTime;
         private bool _hideCursorOnIdle;
@@ -117,6 +117,21 @@ namespace Ryujinx.Ui
             _lastCursorMoveTime = Stopwatch.GetTimestamp();
 
             ConfigurationState.Instance.HideCursorOnIdle.Event += HideCursorStateChanged;
+            ConfigurationState.Instance.Graphics.AntiAliasing.Event += UpdateAnriAliasing;
+            ConfigurationState.Instance.Graphics.ScalingFilter.Event += UpdateScalingFilter;
+            ConfigurationState.Instance.Graphics.ScalingFilterLevel.Event += UpdateScalingFilterLevel;
+        }
+
+        private void UpdateScalingFilterLevel(object sender, ReactiveEventArgs<int> e)
+        {
+            Renderer.Window.SetScalingFilter((ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value);
+            Renderer.Window.SetScalingFilterLevel(ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value);
+        }
+
+        private void UpdateScalingFilter(object sender, ReactiveEventArgs<Ryujinx.Common.Configuration.ScalingFilter> e)
+        {
+            Renderer.Window.SetScalingFilter((ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value);
+            Renderer.Window.SetScalingFilterLevel(ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value);
         }
 
         public abstract void InitializeRenderer();
@@ -150,9 +165,17 @@ namespace Ryujinx.Ui
         private void Renderer_Destroyed(object sender, EventArgs e)
         {
             ConfigurationState.Instance.HideCursorOnIdle.Event -= HideCursorStateChanged;
+            ConfigurationState.Instance.Graphics.AntiAliasing.Event -= UpdateAnriAliasing;
+            ConfigurationState.Instance.Graphics.ScalingFilter.Event -= UpdateScalingFilter;
+            ConfigurationState.Instance.Graphics.ScalingFilterLevel.Event -= UpdateScalingFilterLevel;
 
             NpadManager.Dispose();
             Dispose();
+        }
+
+        private void UpdateAnriAliasing(object sender, ReactiveEventArgs<Ryujinx.Common.Configuration.AntiAliasing> e)
+        {
+            Renderer?.Window.SetAntiAliasing((Graphics.GAL.AntiAliasing)e.NewValue);
         }
 
         protected override bool OnMotionNotifyEvent(EventMotion evnt)
@@ -298,7 +321,7 @@ namespace Ryujinx.Ui
                 Window.Cursor = (cursorMoveDelta >= CursorHideIdleTime * Stopwatch.Frequency) ? _invisibleCursor : null;
             }
 
-            if(ConfigurationState.Instance.Hid.EnableMouse && _isMouseInClient)
+            if (ConfigurationState.Instance.Hid.EnableMouse && _isMouseInClient)
             {
                 Window.Cursor = _invisibleCursor;
             }
@@ -395,6 +418,10 @@ namespace Ryujinx.Ui
 
             Device.Gpu.Renderer.Initialize(_glLogLevel);
 
+            Renderer.Window.SetAntiAliasing((Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value);
+            Renderer.Window.SetScalingFilter((Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value);
+            Renderer.Window.SetScalingFilterLevel(ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value);
+
             _gpuBackendName = GetGpuBackendName();
             _gpuVendorName = GetGpuVendorName();
 
@@ -468,18 +495,14 @@ namespace Ryujinx.Ui
             {
                 parent.Present();
 
-                string titleNameSection = string.IsNullOrWhiteSpace(Device.Application.TitleName) ? string.Empty
-                    : $" - {Device.Application.TitleName}";
+                var activeProcess   = Device.Processes.ActiveApplication;
 
-                string titleVersionSection = string.IsNullOrWhiteSpace(Device.Application.DisplayVersion) ? string.Empty
-                    : $" v{Device.Application.DisplayVersion}";
+                string titleNameSection    = string.IsNullOrWhiteSpace(activeProcess.Name) ? string.Empty : $" {activeProcess.Name}";
+                string titleVersionSection = string.IsNullOrWhiteSpace(activeProcess.DisplayVersion) ? string.Empty : $" v{activeProcess.DisplayVersion}";
+                string titleIdSection      = $" ({activeProcess.ProgramIdText.ToUpper()})";
+                string titleArchSection    = activeProcess.Is64Bit ? " (64-bit)" : " (32-bit)";
 
-                string titleIdSection = string.IsNullOrWhiteSpace(Device.Application.TitleIdText) ? string.Empty
-                    : $" ({Device.Application.TitleIdText.ToUpper()})";
-
-                string titleArchSection = Device.Application.TitleIs64Bit ? " (64-bit)" : " (32-bit)";
-
-                parent.Title = $"Ryujinx {Program.Version}{titleNameSection}{titleVersionSection}{titleIdSection}{titleArchSection}";
+                parent.Title = $"Ryujinx {Program.Version} -{titleNameSection}{titleVersionSection}{titleIdSection}{titleArchSection}";
             });
 
             Thread renderLoopThread = new Thread(Render)
@@ -519,7 +542,7 @@ namespace Ryujinx.Ui
             _gpuCancellationTokenSource.Cancel();
 
             _isStopped = true;
-            
+
             if (_isActive)
             {
                 _isActive = false;
@@ -585,7 +608,7 @@ namespace Ryujinx.Ui
                     {
                         if (!ParentWindow.State.HasFlag(WindowState.Fullscreen))
                         {
-                            Ptc.Continue();
+                            Device.Processes.ActiveApplication.DiskCacheLoadState?.Cancel();
                         }
                     }
                 });

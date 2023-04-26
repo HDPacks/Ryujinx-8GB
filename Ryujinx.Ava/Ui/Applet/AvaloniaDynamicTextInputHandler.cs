@@ -3,15 +3,16 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Ryujinx.Ava.Input;
-using Ryujinx.Ava.Ui.Controls;
-using Ryujinx.Ava.Ui.Windows;
+using Ryujinx.Ava.UI.Controls;
+using Ryujinx.Ava.UI.Helpers;
+using Ryujinx.Ava.UI.Windows;
 using Ryujinx.HLE.Ui;
 using System;
 using System.Threading;
 
 using HidKey = Ryujinx.Common.Configuration.Hid.Key;
 
-namespace Ryujinx.Ava.Ui.Applet
+namespace Ryujinx.Ava.UI.Applet
 {
     class AvaloniaDynamicTextInputHandler : IDynamicTextInputHandler
     {
@@ -135,7 +136,7 @@ namespace Ryujinx.Ava.Ui.Applet
             Dispatcher.UIThread.Post(() =>
             {
                 _hiddenTextBox.Clear();
-                _parent.RendererControl.Focus();
+                _parent.ViewModel.RendererHostControl.Focus();
 
                 _parent = null;
             });

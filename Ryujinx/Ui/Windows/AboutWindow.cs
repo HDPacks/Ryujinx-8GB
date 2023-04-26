@@ -31,7 +31,7 @@ namespace Ryujinx.Ui.Windows
             {
                 string patreonJsonString = await httpClient.GetStringAsync("https://patreon.ryujinx.org/");
 
-                _patreonNamesText.Buffer.Text = string.Join(", ", JsonHelper.Deserialize<string[]>(patreonJsonString));
+                _patreonNamesText.Buffer.Text = string.Join(", ", JsonHelper.Deserialize(patreonJsonString, CommonJsonContext.Default.StringArray));
             }
             catch
             {
@@ -45,6 +45,10 @@ namespace Ryujinx.Ui.Windows
         private void RyujinxButton_Pressed(object sender, ButtonPressEventArgs args)
         {
             OpenHelper.OpenUrl("https://ryujinx.org");
+        }
+        private void HDPacksButton_Pressed(object sender, ButtonPressEventArgs args)
+        {
+            OpenHelper.OpenUrl("https://www.HDPacks.com");
         }
         private void AmiiboApiButton_Pressed(object sender, ButtonPressEventArgs args)
         {

@@ -1,6 +1,6 @@
 using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Services.Sdb.Pl.Types;
+using Ryujinx.Horizon.Common;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
@@ -13,7 +13,7 @@ namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
 
         public ISharedFontManager(ServiceCtx context) { }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // RequestLoad(u32)
         public ResultCode RequestLoad(ServiceCtx context)
         {
@@ -24,7 +24,7 @@ namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
             return ResultCode.Success;
         }
 
-        [CommandHipc(1)]
+        [CommandCmif(1)]
         // GetLoadState(u32) -> u32
         public ResultCode GetLoadState(ServiceCtx context)
         {
@@ -37,7 +37,7 @@ namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
             return ResultCode.Success;
         }
 
-        [CommandHipc(2)]
+        [CommandCmif(2)]
         // GetFontSize(u32) -> u32
         public ResultCode GetFontSize(ServiceCtx context)
         {
@@ -48,7 +48,7 @@ namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
             return ResultCode.Success;
         }
 
-        [CommandHipc(3)]
+        [CommandCmif(3)]
         // GetSharedMemoryAddressOffset(u32) -> u32
         public ResultCode GetSharedMemoryAddressOffset(ServiceCtx context)
         {
@@ -59,7 +59,7 @@ namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
             return ResultCode.Success;
         }
 
-        [CommandHipc(4)]
+        [CommandCmif(4)]
         // GetSharedMemoryNativeHandle() -> handle<copy>
         public ResultCode GetSharedMemoryNativeHandle(ServiceCtx context)
         {
@@ -67,7 +67,7 @@ namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
 
             if (_fontSharedMemHandle == 0)
             {
-                if (context.Process.HandleTable.GenerateHandle(context.Device.System.FontSharedMem, out _fontSharedMemHandle) != KernelResult.Success)
+                if (context.Process.HandleTable.GenerateHandle(context.Device.System.FontSharedMem, out _fontSharedMemHandle) != Result.Success)
                 {
                     throw new InvalidOperationException("Out of handles!");
                 }
@@ -78,7 +78,7 @@ namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
             return ResultCode.Success;
         }
 
-        [CommandHipc(5)]
+        [CommandCmif(5)]
         // GetSharedFontInOrderOfPriority(bytes<8, 1>) -> (u8, u32, buffer<unknown, 6>, buffer<unknown, 6>, buffer<unknown, 6>)
         public ResultCode GetSharedFontInOrderOfPriority(ServiceCtx context)
         {
@@ -103,11 +103,11 @@ namespace Ryujinx.HLE.HOS.Services.Sdb.Pl
             return ResultCode.Success;
         }
 
-        [CommandHipc(6)] // 4.0.0+
+        [CommandCmif(6)] // 4.0.0+
         // GetSharedFontInOrderOfPriorityForSystem(bytes<8, 1>) -> (u8, u32, buffer<unknown, 6>, buffer<unknown, 6>, buffer<unknown, 6>)
         public ResultCode GetSharedFontInOrderOfPriorityForSystem(ServiceCtx context)
         {
-            // TODO: Check the differencies with GetSharedFontInOrderOfPriority. 
+            // TODO: Check the differencies with GetSharedFontInOrderOfPriority.
 
             return GetSharedFontInOrderOfPriority(context);
         }

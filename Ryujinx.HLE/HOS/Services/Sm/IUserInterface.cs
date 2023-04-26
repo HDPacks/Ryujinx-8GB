@@ -1,8 +1,8 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Ipc;
 using Ryujinx.HLE.HOS.Kernel;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Ipc;
+using Ryujinx.Horizon.Common;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -34,7 +34,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
                 .ToDictionary(service => service.Name, service => service.type);
         }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         [CommandTipc(0)] // 12.0.0+
         // Initialize(pid, u64 reserved)
         public ResultCode Initialize(ServiceCtx context)
@@ -53,7 +53,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
             return GetService(context);
         }
 
-        [CommandHipc(1)]
+        [CommandCmif(1)]
         public ResultCode GetService(ServiceCtx context)
         {
             if (!_isInitialized)
@@ -72,14 +72,14 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 
             if (_registry.TryGetService(name, out KPort port))
             {
-                KernelResult result = port.EnqueueIncomingSession(session.ServerSession);
+                Result result = port.EnqueueIncomingSession(session.ServerSession);
 
-                if (result != KernelResult.Success)
+                if (result != Result.Success)
                 {
                     throw new InvalidOperationException($"Session enqueue on port returned error \"{result}\".");
                 }
 
-                if (context.Process.HandleTable.GenerateHandle(session.ClientSession, out int handle) != KernelResult.Success)
+                if (context.Process.HandleTable.GenerateHandle(session.ClientSession, out int handle) != Result.Success)
                 {
                     throw new InvalidOperationException("Out of handles!");
                 }
@@ -113,7 +113,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
                     }
                 }
 
-                if (context.Process.HandleTable.GenerateHandle(session.ClientSession, out int handle) != KernelResult.Success)
+                if (context.Process.HandleTable.GenerateHandle(session.ClientSession, out int handle) != Result.Success)
                 {
                     throw new InvalidOperationException("Out of handles!");
                 }
@@ -127,9 +127,9 @@ namespace Ryujinx.HLE.HOS.Services.Sm
             return ResultCode.Success;
         }
 
-        [CommandHipc(2)]
+        [CommandCmif(2)]
         // RegisterService(ServiceName name, u8 isLight, u32 maxHandles) -> handle<move, port>
-        public ResultCode RegisterServiceHipc(ServiceCtx context)
+        public ResultCode RegisterServiceCmif(ServiceCtx context)
         {
             if (!_isInitialized)
             {
@@ -180,16 +180,16 @@ namespace Ryujinx.HLE.HOS.Services.Sm
                 return ResultCode.InvalidName;
             }
 
-            Logger.Info?.Print(LogClass.ServiceSm, $"Register \"{name}\".");
+            Logger.Debug?.Print(LogClass.ServiceSm, $"Register \"{name}\".");
 
-            KPort port = new KPort(context.Device.System.KernelContext, maxSessions, isLight, 0);
+            KPort port = new KPort(context.Device.System.KernelContext, maxSessions, isLight, null);
 
             if (!_registry.TryRegister(name, port))
             {
                 return ResultCode.AlreadyRegistered;
             }
 
-            if (context.Process.HandleTable.GenerateHandle(port.ServerPort, out int handle) != KernelResult.Success)
+            if (context.Process.HandleTable.GenerateHandle(port.ServerPort, out int handle) != Result.Success)
             {
                 throw new InvalidOperationException("Out of handles!");
             }
@@ -199,7 +199,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
             return ResultCode.Success;
         }
 
-        [CommandHipc(3)]
+        [CommandCmif(3)]
         [CommandTipc(3)] // 12.0.0+
         // UnregisterService(ServiceName name)
         public ResultCode UnregisterService(ServiceCtx context)

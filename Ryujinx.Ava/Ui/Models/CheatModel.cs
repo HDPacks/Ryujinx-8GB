@@ -1,7 +1,7 @@
-﻿using Ryujinx.Ava.Ui.ViewModels;
+﻿using Ryujinx.Ava.UI.ViewModels;
 using System;
 
-namespace Ryujinx.Ava.Ui.Models
+namespace Ryujinx.Ava.UI.Models
 {
     public class CheatModel : BaseModel
     {

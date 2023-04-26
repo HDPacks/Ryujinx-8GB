@@ -59,6 +59,7 @@ namespace Ryujinx.Graphics.OpenGL
         private uint _fragmentOutputMap;
         private uint _componentMasks;
         private uint _currentComponentMasks;
+        private bool _advancedBlendEnable;
 
         private uint _scissorEnables;
 
@@ -772,6 +773,16 @@ namespace Ryujinx.Graphics.OpenGL
             _tfEnabled = false;
         }
 
+        public double GetCounterDivisor(CounterType type)
+        {
+            if (type == CounterType.SamplesPassed)
+            {
+                return _renderScale[0].X * _renderScale[0].X;
+            }
+
+            return 1;
+        }
+
         public void SetAlphaTest(bool enable, float reference, CompareOp op)
         {
             if (!enable)
@@ -784,8 +795,26 @@ namespace Ryujinx.Graphics.OpenGL
             GL.Enable(EnableCap.AlphaTest);
         }
 
+        public void SetBlendState(AdvancedBlendDescriptor blend)
+        {
+            if (HwCapabilities.SupportsBlendEquationAdvanced)
+            {
+                GL.BlendEquation((BlendEquationMode)blend.Op.Convert());
+                GL.NV.BlendParameter(NvBlendEquationAdvanced.BlendOverlapNv, (int)blend.Overlap.Convert());
+                GL.NV.BlendParameter(NvBlendEquationAdvanced.BlendPremultipliedSrcNv, blend.SrcPreMultiplied ? 1 : 0);
+                GL.Enable(EnableCap.Blend);
+                _advancedBlendEnable = true;
+            }
+        }
+
         public void SetBlendState(int index, BlendDescriptor blend)
         {
+            if (_advancedBlendEnable)
+            {
+                GL.Disable(EnableCap.Blend);
+                _advancedBlendEnable = false;
+            }
+
             if (!blend.Enable)
             {
                 GL.Disable(IndexedEnableCap.Blend, index);
@@ -804,31 +833,13 @@ namespace Ryujinx.Graphics.OpenGL
                 (BlendingFactorSrc)blend.AlphaSrcFactor.Convert(),
                 (BlendingFactorDest)blend.AlphaDstFactor.Convert());
 
-            static bool IsDualSource(BlendFactor factor)
-            {
-                switch (factor)
-                {
-                    case BlendFactor.Src1Color:
-                    case BlendFactor.Src1ColorGl:
-                    case BlendFactor.Src1Alpha:
-                    case BlendFactor.Src1AlphaGl:
-                    case BlendFactor.OneMinusSrc1Color:
-                    case BlendFactor.OneMinusSrc1ColorGl:
-                    case BlendFactor.OneMinusSrc1Alpha:
-                    case BlendFactor.OneMinusSrc1AlphaGl:
-                        return true;
-                }
-
-                return false;
-            }
-
             EnsureFramebuffer();
 
             _framebuffer.SetDualSourceBlend(
-                IsDualSource(blend.ColorSrcFactor) ||
-                IsDualSource(blend.ColorDstFactor) ||
-                IsDualSource(blend.AlphaSrcFactor) ||
-                IsDualSource(blend.AlphaDstFactor));
+                blend.ColorSrcFactor.IsDualSource() ||
+                blend.ColorDstFactor.IsDualSource() ||
+                blend.AlphaSrcFactor.IsDualSource() ||
+                blend.AlphaDstFactor.IsDualSource());
 
             if (_blendConstant != blend.BlendConstant)
             {

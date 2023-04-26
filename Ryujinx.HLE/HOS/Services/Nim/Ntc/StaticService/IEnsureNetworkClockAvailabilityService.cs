@@ -1,12 +1,12 @@
 ﻿using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Ipc;
-using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Threading;
+using Ryujinx.Horizon.Common;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.Nim.Ntc.StaticService
 {
-    class IEnsureNetworkClockAvailabilityService : IpcService 
+    class IEnsureNetworkClockAvailabilityService : IpcService
     {
         private KEvent     _finishNotificationEvent;
         private ResultCode _taskResultCode;
@@ -22,7 +22,7 @@ namespace Ryujinx.HLE.HOS.Services.Nim.Ntc.StaticService
             //       autonomic_correction_immediate_try_count_max, autonomic_correction_immediate_try_interval_milliseconds
         }
 
-        [CommandHipc(0)]
+        [CommandCmif(0)]
         // StartTask()
         public ResultCode StartTask(ServiceCtx context)
         {
@@ -39,11 +39,11 @@ namespace Ryujinx.HLE.HOS.Services.Nim.Ntc.StaticService
             return ResultCode.Success;
         }
 
-        [CommandHipc(1)]
+        [CommandCmif(1)]
         // GetFinishNotificationEvent() -> handle<copy>
         public ResultCode GetFinishNotificationEvent(ServiceCtx context)
         {
-            if (context.Process.HandleTable.GenerateHandle(_finishNotificationEvent.ReadableEvent, out int finishNotificationEventHandle) != KernelResult.Success)
+            if (context.Process.HandleTable.GenerateHandle(_finishNotificationEvent.ReadableEvent, out int finishNotificationEventHandle) != Result.Success)
             {
                 throw new InvalidOperationException("Out of handles!");
             }
@@ -53,14 +53,14 @@ namespace Ryujinx.HLE.HOS.Services.Nim.Ntc.StaticService
             return ResultCode.Success;
         }
 
-        [CommandHipc(2)]
+        [CommandCmif(2)]
         // GetResult()
         public ResultCode GetResult(ServiceCtx context)
         {
             return _taskResultCode;
         }
 
-        [CommandHipc(3)]
+        [CommandCmif(3)]
         // Cancel()
         public ResultCode Cancel(ServiceCtx context)
         {

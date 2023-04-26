@@ -1,7 +1,9 @@
-﻿using Ryujinx.Graphics.GAL;
+﻿using Ryujinx.Common;
+using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
 using Silk.NET.Vulkan;
 using System;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -21,7 +23,7 @@ namespace Ryujinx.Graphics.Vulkan
         protected readonly Device Device;
         public readonly PipelineCache PipelineCache;
 
-        protected readonly AutoFlushCounter AutoFlush;
+        public readonly AutoFlushCounter AutoFlush;
 
         protected PipelineDynamicState DynamicState;
         private PipelineState _newState;
@@ -49,6 +51,11 @@ namespace Ryujinx.Graphics.Vulkan
         private Auto<DisposableFramebuffer> _framebuffer;
         private Auto<DisposableRenderPass> _renderPass;
         private int _writtenAttachmentCount;
+
+        private bool _framebufferUsingColorWriteMask;
+
+        private ITexture[] _preMaskColors;
+        private ITexture _preMaskDepthStencil;
 
         private readonly DescriptorSetUpdater _descriptorSetUpdater;
 
@@ -79,7 +86,7 @@ namespace Ryujinx.Graphics.Vulkan
             Gd = gd;
             Device = device;
 
-            AutoFlush = new AutoFlushCounter();
+            AutoFlush = new AutoFlushCounter(gd);
 
             var pipelineCacheCreateInfo = new PipelineCacheCreateInfo()
             {
@@ -105,11 +112,9 @@ namespace Ryujinx.Graphics.Vulkan
             var defaultScale = new Vector4<float> { X = 1f, Y = 0f, Z = 0f, W = 0f };
             new Span<Vector4<float>>(_renderScale).Fill(defaultScale);
 
-            _newState.Initialize();
-            _newState.LineWidth = 1f;
-            _newState.SamplesCount = 1;
+            _storedBlend = new PipelineColorBlendAttachmentState[Constants.MaxRenderTargets];
 
-            _storedBlend = new PipelineColorBlendAttachmentState[8];
+            _newState.Initialize();
         }
 
         public void Initialize()
@@ -143,6 +148,28 @@ namespace Ryujinx.Graphics.Vulkan
                 null,
                 0,
                 null);
+        }
+
+        public void ComputeBarrier()
+        {
+            MemoryBarrier memoryBarrier = new MemoryBarrier()
+            {
+                SType = StructureType.MemoryBarrier,
+                SrcAccessMask = AccessFlags.MemoryReadBit | AccessFlags.MemoryWriteBit,
+                DstAccessMask = AccessFlags.MemoryReadBit | AccessFlags.MemoryWriteBit
+            };
+
+            Gd.Api.CmdPipelineBarrier(
+                CommandBuffer,
+                PipelineStageFlags.ComputeShaderBit,
+                PipelineStageFlags.AllCommandsBit,
+                0,
+                1,
+                new ReadOnlySpan<MemoryBarrier>(memoryBarrier),
+                0,
+                ReadOnlySpan<BufferMemoryBarrier>.Empty,
+                0,
+                ReadOnlySpan<ImageMemoryBarrier>.Empty);
         }
 
         public void BeginTransformFeedback(GAL.PrimitiveTopology topology)
@@ -199,6 +226,8 @@ namespace Ryujinx.Graphics.Vulkan
             var attachment = new ClearAttachment(ImageAspectFlags.ColorBit, (uint)index, clearValue);
             var clearRect = FramebufferParams.GetClearRect(ClearScissor, layer, layerCount);
 
+            FramebufferParams.InsertClearBarrier(Cbs, index);
+
             Gd.Api.CmdClearAttachments(CommandBuffer, 1, &attachment, 1, &clearRect);
         }
 
@@ -228,6 +257,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             var attachment = new ClearAttachment(flags, 0, clearValue);
             var clearRect = FramebufferParams.GetClearRect(ClearScissor, layer, layerCount);
+
+            FramebufferParams.InsertClearBarrierDS(Cbs);
 
             Gd.Api.CmdClearAttachments(CommandBuffer, 1, &attachment, 1, &clearRect);
         }
@@ -644,9 +675,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _newState.DepthWriteEnable = oldDepthWriteEnable;
                 _newState.Topology = oldTopology;
 
-                DynamicState.Viewports = oldViewports;
-                DynamicState.ViewportsCount = (int)oldViewportsCount;
-                DynamicState.SetViewportsDirty();
+                DynamicState.SetViewports(ref oldViewports, oldViewportsCount);
 
                 _newState.ViewportsCount = oldViewportsCount;
                 SignalStateChange();
@@ -659,6 +688,16 @@ namespace Ryujinx.Graphics.Vulkan
             _tfEnabled = false;
         }
 
+        public double GetCounterDivisor(CounterType type)
+        {
+            if (type == CounterType.SamplesPassed)
+            {
+                return _renderScale[0].X * _renderScale[0].X;
+            }
+
+            return 1;
+        }
+
         public bool IsCommandBufferActive(CommandBuffer cb)
         {
             return CommandBuffer.Handle == cb.Handle;
@@ -669,6 +708,49 @@ namespace Ryujinx.Graphics.Vulkan
             // This is currently handled using shader specialization, as Vulkan does not support alpha test.
             // In the future, we may want to use this to write the reference value into the support buffer,
             // to avoid creating one version of the shader per reference value used.
+        }
+
+        public void SetBlendState(AdvancedBlendDescriptor blend)
+        {
+            for (int index = 0; index < Constants.MaxRenderTargets; index++)
+            {
+                ref var vkBlend = ref _newState.Internal.ColorBlendAttachmentState[index];
+
+                if (index == 0)
+                {
+                    var blendOp = blend.Op.Convert();
+
+                    vkBlend = new PipelineColorBlendAttachmentState(
+                        blendEnable: true,
+                        colorBlendOp: blendOp,
+                        alphaBlendOp: blendOp,
+                        colorWriteMask: vkBlend.ColorWriteMask);
+
+                    if (Gd.Capabilities.SupportsBlendEquationAdvancedNonPreMultipliedSrcColor)
+                    {
+                        _newState.AdvancedBlendSrcPreMultiplied = blend.SrcPreMultiplied;
+                    }
+
+                    if (Gd.Capabilities.SupportsBlendEquationAdvancedCorrelatedOverlap)
+                    {
+                        _newState.AdvancedBlendOverlap = blend.Overlap.Convert();
+                    }
+                }
+                else
+                {
+                    vkBlend = new PipelineColorBlendAttachmentState(
+                        colorWriteMask: vkBlend.ColorWriteMask);
+                }
+
+                if (vkBlend.ColorWriteMask == 0)
+                {
+                    _storedBlend[index] = vkBlend;
+
+                    vkBlend = new PipelineColorBlendAttachmentState();
+                }
+            }
+
+            SignalStateChange();
         }
 
         public void SetBlendState(int index, BlendDescriptor blend)
@@ -703,6 +785,11 @@ namespace Ryujinx.Graphics.Vulkan
                 blend.BlendConstant.Green,
                 blend.BlendConstant.Blue,
                 blend.BlendConstant.Alpha);
+
+            // Reset advanced blend state back defaults to the cache to help the pipeline cache.
+            _newState.AdvancedBlendSrcPreMultiplied = true;
+            _newState.AdvancedBlendDstPreMultiplied = true;
+            _newState.AdvancedBlendOverlap = BlendOverlapEXT.UncorrelatedExt;
 
             SignalStateChange();
         }
@@ -750,6 +837,11 @@ namespace Ryujinx.Graphics.Vulkan
         public void SetImage(int binding, ITexture image, GAL.Format imageFormat)
         {
             _descriptorSetUpdater.SetImage(binding, image, imageFormat);
+        }
+
+        public void SetImage(int binding, Auto<DisposableImageView> image)
+        {
+            _descriptorSetUpdater.SetImage(binding, image);
         }
 
         public void SetIndexBuffer(BufferRange buffer, GAL.IndexType type)
@@ -905,22 +997,35 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            SignalStateChange();
-
-            if (writtenAttachments != _writtenAttachmentCount)
+            if (_framebufferUsingColorWriteMask)
             {
-                SignalAttachmentChange();
-                _writtenAttachmentCount = writtenAttachments;
+                SetRenderTargetsInternal(_preMaskColors, _preMaskDepthStencil, true);
             }
+            else
+            {
+                SignalStateChange();
+
+                if (writtenAttachments != _writtenAttachmentCount)
+                {
+                    SignalAttachmentChange();
+                    _writtenAttachmentCount = writtenAttachments;
+                }
+            }
+        }
+
+        private void SetRenderTargetsInternal(ITexture[] colors, ITexture depthStencil, bool filterWriteMasked)
+        {
+            FramebufferParams?.UpdateModifications();
+            CreateFramebuffer(colors, depthStencil, filterWriteMasked);
+            CreateRenderPass();
+            SignalStateChange();
+            SignalAttachmentChange();
         }
 
         public void SetRenderTargets(ITexture[] colors, ITexture depthStencil)
         {
-            FramebufferParams?.UpdateModifications();
-            CreateFramebuffer(colors, depthStencil);
-            CreateRenderPass();
-            SignalStateChange();
-            SignalAttachmentChange();
+            _framebufferUsingColorWriteMask = false;
+            SetRenderTargetsInternal(colors, depthStencil, Gd.IsTBDR);
         }
 
         public void SetRenderTargetScale(float scale)
@@ -1102,7 +1207,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                         int vbSize = vertexBuffer.Buffer.Size;
 
-                        if (Gd.Vendor == Vendor.Amd && vertexBuffer.Stride > 0)
+                        if (Gd.Vendor == Vendor.Amd && !Gd.IsMoltenVk && vertexBuffer.Stride > 0)
                         {
                             // AMD has a bug where if offset + stride * count is greater than
                             // the size, then the last attribute will have the wrong value.
@@ -1119,7 +1224,8 @@ namespace Ryujinx.Graphics.Vulkan
 
                         buffer.Dispose();
 
-                        if ((vertexBuffer.Stride % FormatExtensions.MaxBufferFormatScalarSize) == 0)
+                        if (Gd.Capabilities.VertexBufferAlignment < 2 &&
+                            (vertexBuffer.Stride % FormatExtensions.MaxBufferFormatScalarSize) == 0)
                         {
                             buffer = new VertexBufferState(
                                 vb,
@@ -1163,6 +1269,8 @@ namespace Ryujinx.Graphics.Vulkan
                 return Math.Clamp(value, 0f, 1f);
             }
 
+            DynamicState.ViewportsCount = (uint)count;
+
             for (int i = 0; i < count; i++)
             {
                 var viewport = viewports[i];
@@ -1175,8 +1283,6 @@ namespace Ryujinx.Graphics.Vulkan
                     Clamp(viewport.DepthNear),
                     Clamp(viewport.DepthFar)));
             }
-
-            DynamicState.ViewportsCount = count;
 
             float disableTransformF = disableTransform ? 1.0f : 0.0f;
             if (SupportBufferUpdater.Data.ViewportInverse.W != disableTransformF || disableTransform)
@@ -1193,6 +1299,25 @@ namespace Ryujinx.Graphics.Vulkan
 
             _newState.ViewportsCount = (uint)count;
             SignalStateChange();
+        }
+
+        public void SwapBuffer(Auto<DisposableBuffer> from, Auto<DisposableBuffer> to)
+        {
+            _indexBuffer.Swap(from, to);
+
+            for (int i = 0; i < _vertexBuffers.Length; i++)
+            {
+                _vertexBuffers[i].Swap(from, to);
+            }
+
+            for (int i = 0; i < _transformFeedbackBuffers.Length; i++)
+            {
+                _transformFeedbackBuffers[i].Swap(from, to);
+            }
+
+            _descriptorSetUpdater.SwapBuffer(from, to);
+
+            SignalCommandBufferChange();
         }
 
         public unsafe void TextureBarrier()
@@ -1259,8 +1384,62 @@ namespace Ryujinx.Graphics.Vulkan
             _currentPipelineHandle = 0;
         }
 
-        private void CreateFramebuffer(ITexture[] colors, ITexture depthStencil)
+        private void CreateFramebuffer(ITexture[] colors, ITexture depthStencil, bool filterWriteMasked)
         {
+            if (filterWriteMasked)
+            {
+                // TBDR GPUs don't work properly if the same attachment is bound to multiple targets,
+                // due to each attachment being a copy of the real attachment, rather than a direct write.
+
+                // Just try to remove duplicate attachments.
+                // Save a copy of the array to rebind when mask changes.
+
+                void maskOut()
+                {
+                    if (!_framebufferUsingColorWriteMask)
+                    {
+                        _preMaskColors = colors.ToArray();
+                        _preMaskDepthStencil = depthStencil;
+                    }
+
+                    // If true, then the framebuffer must be recreated when the mask changes.
+                    _framebufferUsingColorWriteMask = true;
+                }
+
+                // Look for textures that are masked out.
+
+                for (int i = 0; i < colors.Length; i++)
+                {
+                    if (colors[i] == null)
+                    {
+                        continue;
+                    }
+
+                    ref var vkBlend = ref _newState.Internal.ColorBlendAttachmentState[i];
+
+                    for (int j = 0; j < i; j++)
+                    {
+                        // Check each binding for a duplicate binding before it.
+
+                        if (colors[i] == colors[j])
+                        {
+                            // Prefer the binding with no write mask.
+                            ref var vkBlend2 = ref _newState.Internal.ColorBlendAttachmentState[j];
+                            if (vkBlend.ColorWriteMask == 0)
+                            {
+                                colors[i] = null;
+                                maskOut();
+                            }
+                            else if (vkBlend2.ColorWriteMask == 0)
+                            {
+                                colors[j] = null;
+                                maskOut();
+                            }
+                        }
+                    }
+                }
+            }
+
             FramebufferParams = new FramebufferParams(Device, colors, depthStencil);
             UpdatePipelineAttachmentFormats();
         }
@@ -1270,8 +1449,7 @@ namespace Ryujinx.Graphics.Vulkan
             var dstAttachmentFormats = _newState.Internal.AttachmentFormats.AsSpan();
             FramebufferParams.AttachmentFormats.CopyTo(dstAttachmentFormats);
 
-            int maxAttachmentIndex = FramebufferParams.MaxColorAttachmentIndex + (FramebufferParams.HasDepthStencil ? 1 : 0);
-            for (int i = FramebufferParams.AttachmentFormats.Length; i <= maxAttachmentIndex; i++)
+            for (int i = FramebufferParams.AttachmentFormats.Length; i < dstAttachmentFormats.Length; i++)
             {
                 dstAttachmentFormats[i] = 0;
             }
@@ -1302,8 +1480,6 @@ namespace Ryujinx.Graphics.Vulkan
 
                 for (int i = 0; i < FramebufferParams.AttachmentsCount; i++)
                 {
-                    int bindIndex = FramebufferParams.AttachmentIndices[i];
-
                     attachmentDescs[i] = new AttachmentDescription(
                         0,
                         FramebufferParams.AttachmentFormats[i],
@@ -1386,6 +1562,11 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void RecreatePipelineIfNeeded(PipelineBindPoint pbp)
         {
+            if (AutoFlush.ShouldFlushDraw(DrawCount))
+            {
+                Gd.FlushAllCommands();
+            }
+
             DynamicState.ReplayIfDirty(Gd.Api, CommandBuffer);
 
             // Commit changes to the support buffer before drawing.

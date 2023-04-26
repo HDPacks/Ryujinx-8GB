@@ -1,15 +1,17 @@
-using Ryujinx.Ava.Ui.ViewModels;
+using Ryujinx.Ava.UI.ViewModels;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using System;
 
-namespace Ryujinx.Ava.Ui.Models
+namespace Ryujinx.Ava.UI.Models
 {
     public class TempProfile : BaseModel
     {
         private readonly UserProfile _profile;
-        private byte[] _image = null;
+        private byte[] _image;
         private string _name = String.Empty;
         private UserId _userId;
+
+        public uint MaxProfileNameLength => 0x20;
 
         public byte[] Image
         {
@@ -28,8 +30,11 @@ namespace Ryujinx.Ava.Ui.Models
             {
                 _userId = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(UserIdString));
             }
         }
+
+        public string UserIdString => _userId.ToString();
 
         public string Name
         {
@@ -52,7 +57,5 @@ namespace Ryujinx.Ava.Ui.Models
                 UserId = profile.UserId;
             }
         }
-
-        public TempProfile(){}
     }
 }

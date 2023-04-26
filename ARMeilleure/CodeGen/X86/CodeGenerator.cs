@@ -16,6 +16,7 @@ namespace ARMeilleure.CodeGen.X86
 {
     static class CodeGenerator
     {
+        private const int RegistersCount = 16;
         private const int PageSize       = 0x1000;
         private const int StackGuardSize = 0x2000;
 
@@ -143,7 +144,8 @@ namespace ARMeilleure.CodeGen.X86
                 CallingConvention.GetIntCallerSavedRegisters(),
                 CallingConvention.GetVecCallerSavedRegisters(),
                 CallingConvention.GetIntCalleeSavedRegisters(),
-                CallingConvention.GetVecCalleeSavedRegisters());
+                CallingConvention.GetVecCalleeSavedRegisters(),
+                RegistersCount);
 
             AllocationResult allocResult = regAlloc.RunPass(cfg, stackAlloc, regMasks);
 
@@ -247,10 +249,9 @@ namespace ARMeilleure.CodeGen.X86
                     case IntrinsicType.Mxcsr:
                     {
                         Operand offset = operation.GetSource(0);
-                        Operand bits   = operation.GetSource(1);
 
-                        Debug.Assert(offset.Kind == OperandKind.Constant && bits.Kind == OperandKind.Constant);
-                        Debug.Assert(offset.Type == OperandType.I32 && bits.Type == OperandType.I32);
+                        Debug.Assert(offset.Kind == OperandKind.Constant);
+                        Debug.Assert(offset.Type == OperandType.I32);
 
                         int offs = offset.AsInt32() + context.CallArgsRegionSize;
 
@@ -259,20 +260,22 @@ namespace ARMeilleure.CodeGen.X86
 
                         Debug.Assert(HardwareCapabilities.SupportsSse || HardwareCapabilities.SupportsVexEncoding);
 
-                        context.Assembler.Stmxcsr(memOp);
-
-                        if (operation.Intrinsic == Intrinsic.X86Mxcsrmb)
+                        if (operation.Intrinsic == Intrinsic.X86Ldmxcsr)
                         {
-                            context.Assembler.Or(memOp, bits, OperandType.I32);
+                            Operand bits = operation.GetSource(1);
+                            Debug.Assert(bits.Type == OperandType.I32);
+
+                            context.Assembler.Mov(memOp, bits, OperandType.I32);
+                            context.Assembler.Ldmxcsr(memOp);
                         }
-                        else /* if (intrinOp.Intrinsic == Intrinsic.X86Mxcsrub) */
+                        else if (operation.Intrinsic == Intrinsic.X86Stmxcsr)
                         {
-                            Operand notBits = Const(~bits.AsInt32());
+                            Operand dest = operation.Destination;
+                            Debug.Assert(dest.Type == OperandType.I32);
 
-                            context.Assembler.And(memOp, notBits, OperandType.I32);
+                            context.Assembler.Stmxcsr(memOp);
+                            context.Assembler.Mov(dest, memOp, OperandType.I32);
                         }
-
-                        context.Assembler.Ldmxcsr(memOp);
 
                         break;
                     }
@@ -1586,6 +1589,12 @@ namespace ARMeilleure.CodeGen.X86
             Operand source = operation.GetSource(0);
 
             Debug.Assert(dest.Type.IsInteger() && source.Type.IsInteger());
+
+            // We can eliminate the move if source is already 32-bit and the registers are the same.
+            if (dest.Value == source.Value && source.Type == OperandType.I32)
+            {
+                return;
+            }
 
             context.Assembler.Mov(dest, source, OperandType.I32);
         }

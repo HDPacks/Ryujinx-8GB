@@ -1,9 +1,9 @@
 using Avalonia.Interactivity;
 using Ryujinx.Ava.Common.Locale;
-using Ryujinx.Ava.Ui.Models;
-using Ryujinx.Ava.Ui.ViewModels;
+using Ryujinx.Ava.UI.ViewModels;
+using Ryujinx.Ui.Common.Models.Amiibo;
 
-namespace Ryujinx.Ava.Ui.Windows
+namespace Ryujinx.Ava.UI.Windows
 {
     public partial class AmiiboWindow : StyleableWindow
     {
@@ -17,7 +17,7 @@ namespace Ryujinx.Ava.Ui.Windows
 
             InitializeComponent();
 
-            Title = $"Ryujinx {Program.Version} - " + LocaleManager.Instance["Amiibo"];
+            Title = $"Ryujinx {Program.Version} - " + LocaleManager.Instance[LocaleKeys.Amiibo];
         }
 
         public AmiiboWindow()
@@ -30,19 +30,19 @@ namespace Ryujinx.Ava.Ui.Windows
 
             if (Program.PreviewerDetached)
             {
-                Title = $"Ryujinx {Program.Version} - " + LocaleManager.Instance["Amiibo"];
+                Title = $"Ryujinx {Program.Version} - " + LocaleManager.Instance[LocaleKeys.Amiibo];
             }
         }
 
         public bool IsScanned { get; set; }
-        public Amiibo.AmiiboApi ScannedAmiibo { get; set; }
+        public AmiiboApi ScannedAmiibo { get; set; }
         public AmiiboWindowViewModel ViewModel { get; set; }
 
         private void ScanButton_Click(object sender, RoutedEventArgs e)
         {
             if (ViewModel.AmiiboSelectedIndex > -1)
             {
-                Amiibo.AmiiboApi amiibo = ViewModel.AmiiboList[ViewModel.AmiiboSelectedIndex];
+                AmiiboApi amiibo = ViewModel.AmiiboList[ViewModel.AmiiboSelectedIndex];
                 ScannedAmiibo = amiibo;
                 IsScanned = true;
                 Close();

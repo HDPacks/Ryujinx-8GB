@@ -3,10 +3,10 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Ryujinx.Ava.Common.Locale;
-using Ryujinx.Ava.Ui.Windows;
+using Ryujinx.Ava.UI.Windows;
 using System.Threading.Tasks;
 
-namespace Ryujinx.Ava.Ui.Applet
+namespace Ryujinx.Ava.UI.Applet
 {
     internal partial class ErrorAppletWindow : StyleableWindow
     {
@@ -34,7 +34,7 @@ namespace Ryujinx.Ava.Ui.Applet
             }
             else
             {
-                AddButton(LocaleManager.Instance["InputDialogOk"], 0);
+                AddButton(LocaleManager.Instance[LocaleKeys.InputDialogOk], 0);
             }
         }
 

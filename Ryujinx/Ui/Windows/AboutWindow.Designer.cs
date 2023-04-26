@@ -15,7 +15,9 @@ namespace Ryujinx.Ui.Windows
         private Label          _ryujinxLabel;
         private Label          _ryujinxPhoneticLabel;
         private EventBox       _ryujinxLink;
+        private EventBox       _hdpacksLink;
         private Label          _ryujinxLinkLabel;
+        private Label          _hdpacksLinkLabel;
         private Label          _versionLabel;
         private Label          _disclaimerLabel;
         private EventBox       _amiiboApiLink;
@@ -39,8 +41,11 @@ namespace Ryujinx.Ui.Windows
         private Label          _twitterLabel;
         private Separator      _separator;
         private Box            _rightBox;
+        private HBox           _HDPacksBox;
         private Label          _aboutLabel;
-        private Label          _aboutDescriptionLabel;
+        private Label          _aboutDescriptionLabelA; 
+        private Label          _aboutDescriptionLabelB;
+        private Label          _aboutDescriptionLabelC;
         private Label          _createdByLabel;
         private TextView       _createdByText;
         private EventBox       _contributorsEventBox;
@@ -127,6 +132,12 @@ namespace Ryujinx.Ui.Windows
             };
             _ryujinxLink.ButtonPressEvent += RyujinxButton_Pressed;
 
+            _hdpacksLink = new EventBox()
+            {
+                Margin = 0
+            };
+            _hdpacksLink.ButtonPressEvent += HDPacksButton_Pressed;
+
             //
             // _ryujinxLinkLabel
             //
@@ -206,7 +217,7 @@ namespace Ryujinx.Ui.Windows
             //
             // _patreonLogo
             //
-            _patreonLogo = new Image(new Gdk.Pixbuf(Assembly.GetAssembly(typeof(ConfigurationState)), "Ryujinx.Ui.Common.Resources.Logo_Patreon.png", 30, 30))
+            _patreonLogo = new Image(new Gdk.Pixbuf(Assembly.GetAssembly(typeof(ConfigurationState)), "Ryujinx.Ui.Common.Resources.Logo_Patreon_Light.png", 30, 30))
             {
                 Margin = 10
             };
@@ -236,7 +247,7 @@ namespace Ryujinx.Ui.Windows
             //
             // _githubLogo
             //
-            _githubLogo = new Image(new Gdk.Pixbuf(Assembly.GetAssembly(typeof(ConfigurationState)), "Ryujinx.Ui.Common.Resources.Logo_GitHub.png", 30, 30))
+            _githubLogo = new Image(new Gdk.Pixbuf(Assembly.GetAssembly(typeof(ConfigurationState)), "Ryujinx.Ui.Common.Resources.Logo_GitHub_Light.png", 30, 30))
             {
                 Margin = 10
             };
@@ -266,7 +277,7 @@ namespace Ryujinx.Ui.Windows
             //
             // _discordLogo
             //
-            _discordLogo = new Image(new Gdk.Pixbuf(Assembly.GetAssembly(typeof(ConfigurationState)), "Ryujinx.Ui.Common.Resources.Logo_Discord.png", 30, 30))
+            _discordLogo = new Image(new Gdk.Pixbuf(Assembly.GetAssembly(typeof(ConfigurationState)), "Ryujinx.Ui.Common.Resources.Logo_Discord_Light.png", 30, 30))
             {
                 Margin = 10
             };
@@ -296,7 +307,7 @@ namespace Ryujinx.Ui.Windows
             //
             // _twitterLogo
             //
-            _twitterLogo = new Image(new Gdk.Pixbuf(Assembly.GetAssembly(typeof(ConfigurationState)), "Ryujinx.Ui.Common.Resources.Logo_Twitter.png", 30, 30))
+            _twitterLogo = new Image(new Gdk.Pixbuf(Assembly.GetAssembly(typeof(ConfigurationState)), "Ryujinx.Ui.Common.Resources.Logo_Twitter_Light.png", 30, 30))
             {
                 Margin = 10
             };
@@ -322,9 +333,10 @@ namespace Ryujinx.Ui.Windows
             //
             _rightBox = new Box(Orientation.Vertical, 0)
             {
-                Margin    = 15,
-                MarginTop = 40
+                Margin = 15
             };
+
+            _HDPacksBox = new HBox();
 
             //
             // _aboutLabel
@@ -340,16 +352,39 @@ namespace Ryujinx.Ui.Windows
             //
             // _aboutDescriptionLabel
             //
-            _aboutDescriptionLabel = new Label("This is a custom build of Ryujinx with the 8 GiB memory layout enabled.\n" +
-                "This build is intended for HD texture mods.\n" +
-                "Find out more at HDPacks.com\n\n" +
-                "Ryujinx is an emulator for the Nintendo Switch™.\n" +
-                "Please support us on Patreon.\n" +
-                "Get all the latest news on our Twitter or Discord.\n" +
-                "Developers interested in contributing can find out more on our GitHub or Discord.")
+            _aboutDescriptionLabelA = new Label("This is a custom build of Ryujinx with 8 GiB extended memory enabled.\n" +
+                                               "This build is intended for HD texture packs.\n")
             {
+                MarginLeft = 15,
+                MarginTop = 15,
+                Halign = Align.Start,
+                LineWrap = true
+            };
+
+            _aboutDescriptionLabelB = new Label("Find out more at ")
+            {
+                MarginLeft = 15,
+                MarginRight = 0,
+                Halign = Align.Start,
+                LineWrap = true
+            };
+
+            _hdpacksLinkLabel = new Label("www.HDPacks.com")
+            {
+                TooltipText = "Click to open the HD Texture Packs website in your default browser.",
+                Attributes = new AttrList()
+            };
+
+            _hdpacksLinkLabel.Attributes.Insert(new Pango.AttrUnderline(Underline.Single));
+
+            _aboutDescriptionLabelC = new Label("Ryujinx is an emulator for the Nintendo Switch™.\n" +
+                                               "Please support us on Patreon.\n" +
+                                               "Get all the latest news on our Twitter or Discord.\n" +
+                                               "Developers interested in contributing can find out more on our GitHub or Discord.")
+            {
+                Halign = Align.Start,                
                 Margin = 15,
-                Halign = Align.Start
+                LineWrap = true
             };
 
             //
@@ -437,6 +472,7 @@ namespace Ryujinx.Ui.Windows
             _logoBox.Add(_ryujinxLogo);
 
             _ryujinxLink.Add(_ryujinxLinkLabel);
+            _hdpacksLink.Add(_hdpacksLinkLabel);
 
             _logoTextBox.Add(_ryujinxLabel);
             _logoTextBox.Add(_ryujinxPhoneticLabel);
@@ -477,7 +513,11 @@ namespace Ryujinx.Ui.Windows
             _patreonNamesScrolled.Add(_patreonNamesText);
 
             _rightBox.Add(_aboutLabel);
-            _rightBox.Add(_aboutDescriptionLabel);
+            _rightBox.Add(_aboutDescriptionLabelA);
+            _HDPacksBox.PackStart(_aboutDescriptionLabelB, false, false, 0);
+            _HDPacksBox.PackStart(_hdpacksLink, false, false, 0);
+            _rightBox.Add(_HDPacksBox);
+            _rightBox.Add(_aboutDescriptionLabelC);
             _rightBox.Add(_createdByLabel);
             _rightBox.Add(_createdByText);
             _rightBox.Add(_contributorsEventBox);

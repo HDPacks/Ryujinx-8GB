@@ -82,7 +82,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             Address         = address;
             Size            = size;
 
-            Handle = context.Renderer.CreateBuffer((int)size);
+            Handle = context.Renderer.CreateBuffer((int)size, baseBuffers?.MaxBy(x => x.Size).Handle ?? BufferHandle.Null);
 
             _useGranular = size > GranularBufferThreshold;
 
@@ -105,13 +105,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             if (_useGranular)
             {
-                _memoryTrackingGranular = physicalMemory.BeginGranularTracking(address, size, baseHandles);
+                _memoryTrackingGranular = physicalMemory.BeginGranularTracking(address, size, ResourceKind.Buffer, baseHandles);
 
                 _memoryTrackingGranular.RegisterPreciseAction(address, size, PreciseAction);
             }
             else
             {
-                _memoryTracking = physicalMemory.BeginTracking(address, size);
+                _memoryTracking = physicalMemory.BeginTracking(address, size, ResourceKind.Buffer);
 
                 if (baseHandles != null)
                 {
@@ -415,10 +415,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             int offset = (int)(address - Address);
 
-            ReadOnlySpan<byte> data = _context.Renderer.GetBufferData(Handle, offset, (int)size);
+            using PinnedSpan<byte> data = _context.Renderer.GetBufferData(Handle, offset, (int)size);
 
             // TODO: When write tracking shaders, they will need to be aware of changes in overlapping buffers.
-            _physicalMemory.WriteUntracked(address, data);
+            _physicalMemory.WriteUntracked(address, data.Get());
         }
 
         /// <summary>
@@ -470,19 +470,16 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 return false;
             }
 
-            if (address < Address)
+            ulong maxAddress = Math.Max(address, Address);
+            ulong minEndAddress = Math.Min(address + size, Address + Size);
+
+            if (maxAddress >= minEndAddress)
             {
-                address = Address;
+                // Access doesn't overlap.
+                return false;
             }
 
-            ulong maxSize = Address + Size - address;
-
-            if (size > maxSize)
-            {
-                size = maxSize;
-            }
-
-            ForceDirty(address, size);
+            ForceDirty(maxAddress, minEndAddress - maxAddress);
 
             return true;
         }

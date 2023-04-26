@@ -1,25 +1,19 @@
 ﻿using LibHac.Ns;
 using Ryujinx.Ava.Common.Locale;
 
-namespace Ryujinx.Ava.Ui.Models
+namespace Ryujinx.Ava.UI.Models
 {
-    internal class TitleUpdateModel
+    public class TitleUpdateModel
     {
-        public bool IsEnabled { get; set; }
-        public bool IsNoUpdate { get; }
         public ApplicationControlProperty Control { get; }
         public string Path { get; }
 
-        public string Label => IsNoUpdate
-            ? LocaleManager.Instance["NoUpdate"]
-            : string.Format(LocaleManager.Instance["TitleUpdateVersionLabel"], Control.DisplayVersionString.ToString(),
-                Path);
+        public string Label => LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.TitleUpdateVersionLabel, Control.DisplayVersionString.ToString());
 
-        public TitleUpdateModel(ApplicationControlProperty control, string path, bool isNoUpdate = false)
+        public TitleUpdateModel(ApplicationControlProperty control, string path)
         {
             Control = control;
             Path = path;
-            IsNoUpdate = isNoUpdate;
         }
     }
 }

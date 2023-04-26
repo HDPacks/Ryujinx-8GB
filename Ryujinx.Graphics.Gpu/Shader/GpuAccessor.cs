@@ -114,6 +114,12 @@ namespace Ryujinx.Graphics.Gpu.Shader
         }
 
         /// <inheritdoc/>
+        public AttributeType QueryFragmentOutputType(int location)
+        {
+            return _state.GraphicsState.FragmentOutputTypes[location];
+        }
+
+        /// <inheritdoc/>
         public int QueryComputeLocalSizeX() => _state.ComputeState.LocalSizeX;
 
         /// <inheritdoc/>
@@ -149,6 +155,12 @@ namespace Ryujinx.Graphics.Gpu.Shader
         public bool QueryHasUnalignedStorageBuffer()
         {
             return _state.GraphicsState.HasUnalignedStorageBuffer || _state.ComputeState.HasUnalignedStorageBuffer;
+        }
+
+        /// <inheritdoc/>
+        public bool QueryDualSourceBlendEnable()
+        {
+            return _state.GraphicsState.DualSourceBlendEnable;
         }
 
         /// <inheritdoc/>

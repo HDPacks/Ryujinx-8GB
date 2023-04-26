@@ -1,5 +1,8 @@
+using Ryujinx.Common.Memory;
+using Ryujinx.Common.Utilities;
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 
@@ -37,12 +40,7 @@ namespace Ryujinx.Common
                     return null;
                 }
 
-                using (var mem = new MemoryStream())
-                {
-                    stream.CopyTo(mem);
-
-                    return mem.ToArray();
-                }
+                return StreamUtils.StreamToBytes(stream);
             }
         }
 
@@ -55,12 +53,7 @@ namespace Ryujinx.Common
                     return null;
                 }
 
-                using (var mem = new MemoryStream())
-                {
-                    await stream.CopyToAsync(mem);
-
-                    return mem.ToArray();
-                }
+                return await StreamUtils.StreamToBytesAsync(stream);
             }
         }
 
@@ -125,6 +118,13 @@ namespace Ryujinx.Common
             var stream = assembly.GetManifestResourceStream(manifestUri);
 
             return stream;
+        }
+
+        public static string[] GetAllAvailableResources(string path, string ext = "")
+        {
+            return ResolveManifestPath(path).Item1.GetManifestResourceNames()
+                .Where(r => r.EndsWith(ext))
+                .ToArray();
         }
 
         private static (Assembly, string) ResolveManifestPath(string filename)

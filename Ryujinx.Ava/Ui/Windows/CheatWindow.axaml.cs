@@ -1,13 +1,13 @@
 ﻿using Avalonia.Collections;
 using Ryujinx.Ava.Common.Locale;
-using Ryujinx.Ava.Ui.Models;
+using Ryujinx.Ava.UI.Models;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace Ryujinx.Ava.Ui.Windows
+namespace Ryujinx.Ava.UI.Windows
 {
     public partial class CheatWindow : StyleableWindow
     {
@@ -24,14 +24,14 @@ namespace Ryujinx.Ava.Ui.Windows
 
             InitializeComponent();
 
-            Title = $"Ryujinx {Program.Version} - " + LocaleManager.Instance["CheatWindowTitle"];
+            Title = $"Ryujinx {Program.Version} - " + LocaleManager.Instance[LocaleKeys.CheatWindowTitle];
         }
 
         public CheatWindow(VirtualFileSystem virtualFileSystem, string titleId, string titleName)
         {
             LoadedCheats = new AvaloniaList<CheatsList>();
 
-            Heading = string.Format(LocaleManager.Instance["CheatWindowHeading"], titleName, titleId.ToUpper());
+            Heading = LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.CheatWindowHeading, titleName, titleId.ToUpper());
 
             InitializeComponent();
 
@@ -86,7 +86,7 @@ namespace Ryujinx.Ava.Ui.Windows
 
             DataContext = this;
             
-            Title = $"Ryujinx {Program.Version} - " + LocaleManager.Instance["CheatWindowTitle"];
+            Title = $"Ryujinx {Program.Version} - " + LocaleManager.Instance[LocaleKeys.CheatWindowTitle];
         }
 
         public void Save()

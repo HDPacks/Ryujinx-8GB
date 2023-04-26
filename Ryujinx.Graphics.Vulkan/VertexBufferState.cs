@@ -82,9 +82,9 @@ namespace Ryujinx.Graphics.Vulkan
                         }
 
                         _buffer = autoBuffer;
-                    }
 
-                    state.Internal.VertexBindingDescriptions[DescriptorIndex].Stride = (uint)_stride;
+                        state.Internal.VertexBindingDescriptions[DescriptorIndex].Stride = (uint)stride;
+                    }
 
                     return;
                 }
@@ -127,6 +127,17 @@ namespace Ryujinx.Graphics.Vulkan
         public bool BoundEquals(Auto<DisposableBuffer> buffer)
         {
             return _buffer == buffer;
+        }
+
+        public void Swap(Auto<DisposableBuffer> from, Auto<DisposableBuffer> to)
+        {
+            if (_buffer == from)
+            {
+                _buffer.DecrementReferenceCount();
+                to.IncrementReferenceCount();
+
+                _buffer = to;
+            }
         }
 
         public void Dispose()

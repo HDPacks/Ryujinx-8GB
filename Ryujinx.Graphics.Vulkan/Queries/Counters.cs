@@ -17,11 +17,24 @@ namespace Ryujinx.Graphics.Vulkan.Queries
 
             _counterQueues = new CounterQueue[count];
 
-            for (int index = 0; index < count; index++)
+            for (int index = 0; index < _counterQueues.Length; index++)
             {
                 CounterType type = (CounterType)index;
                 _counterQueues[index] = new CounterQueue(gd, device, pipeline, type);
             }
+        }
+
+        public void ResetCounterPool()
+        {
+            foreach (var queue in _counterQueues)
+            {
+                queue.ResetCounterPool();
+            }
+        }
+
+        public void ResetFutureCounters(CommandBuffer cmd, int count)
+        {
+            _counterQueues[(int)CounterType.SamplesPassed].ResetFutureCounters(cmd, count);
         }
 
         public CounterQueueEvent QueueReport(CounterType type, EventHandler<ulong> resultHandler, bool hostReserved)
