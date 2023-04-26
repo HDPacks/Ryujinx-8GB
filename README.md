@@ -4,5 +4,5 @@ Ryujinx 8GB Custom Build
 </h1>
 
 <p align="center">
-Custom build of Ryujinx with 8GB extended memory enabled. Visual Studio 2022 with .net 7.0 required to build.
+Custom build of Ryujinx with 8GB extended memory enabled. Visual Studio 2022 with .net 7.0 required to build. Compiled builds available under Releases.
 </p>
