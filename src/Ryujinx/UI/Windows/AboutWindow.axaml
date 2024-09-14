@@ -230,7 +230,7 @@
                     PointerPressed="HDPacksLabel_OnPointerPressed"
                     TextDecorations="Underline"
                     Text="HDPacks.com"
-                    TextWrapping="NoWrap" />                
+                    TextWrapping="NoWrap" />
             </StackPanel>
             <StackPanel
                 Grid.Row="1"
